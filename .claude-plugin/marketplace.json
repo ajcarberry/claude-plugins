@@ -1,6 +1,5 @@
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "claude-plugins",
+  "name": "personal-cc-plugins",
   "description": "Development workflow plugins for Claude Code — documentation management and session lifecycle",
   "owner": {
     "name": "Alex Carberry"
