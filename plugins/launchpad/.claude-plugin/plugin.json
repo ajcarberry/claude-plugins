@@ -1,0 +1,8 @@
+{
+  "name": "launchpad",
+  "version": "0.3.3",
+  "description": "Session lifecycle — /stage creates workspaces, /flight-plan researches and plans, /land closes out with PR.",
+  "author": {
+    "name": "Alex Carberry"
+  }
+}

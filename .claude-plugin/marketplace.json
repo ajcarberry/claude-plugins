@@ -1,0 +1,22 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-plugins",
+  "description": "Development workflow plugins for Claude Code — documentation management and session lifecycle",
+  "owner": {
+    "name": "Alex Carberry"
+  },
+  "plugins": [
+    {
+      "name": "docs",
+      "description": "Autonomous documentation management with multi-agent review",
+      "source": "./plugins/docs",
+      "category": "productivity"
+    },
+    {
+      "name": "launchpad",
+      "description": "Session lifecycle — /stage creates workspaces, /flight-plan researches and plans, /land closes out with PR",
+      "source": "./plugins/launchpad",
+      "category": "productivity"
+    }
+  ]
+}

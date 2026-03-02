@@ -1,0 +1,8 @@
+{
+  "name": "docs",
+  "version": "0.1.3",
+  "description": "Autonomous documentation management with multi-agent review. Detects drift, writes docs, and self-reviews using confidence scoring.",
+  "author": {
+    "name": "Alex Carberry"
+  }
+}
