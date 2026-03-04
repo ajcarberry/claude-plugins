@@ -1,2 +1,6 @@
 *.DS_Store
-.claude/
+.claude/mission-brief.md
+.claude/flight-plan.md
+.github/scripts/node_modules/
+.github/scripts/bun.lock
+.github/scripts/package.json

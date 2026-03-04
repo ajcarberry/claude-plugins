@@ -1,0 +1,57 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr status:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue status:*)",
+      "Bash(gh search:*)",
+      "Bash(gh label:*)",
+      "Bash(ls:*)",
+      "Bash(tree:*)",
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(test:*)",
+      "Bash(dig:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "WebSearch",
+      "WebFetch(domain:carberry.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:anthropic.com)",
+      "WebFetch(domain:gitlab.com)",
+      "WebFetch(domain:codeberg.org)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "mcp__ide__getDiagnostics",
+      "Skill(launchpad:commit)",
+      "Skill(launchpad:stage)",
+      "Skill(launchpad:flight-plan)",
+      "Skill(launchpad:land)",
+      "Skill(plugin-dev:create-plugin)"
+    ],
+    "deny": []
+  },
+  "enabledPlugins": {
+    "context7@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "plugin-dev@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "launchpad@personal-cc-plugins": true,
+    "docs@personal-cc-plugins": true
+  },
+  "extraKnownMarketplaces": {
+    "personal-cc-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "ajcarberry/claude-plugins"
+      }
+    }
+  }
+}
