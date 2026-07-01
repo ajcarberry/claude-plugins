@@ -1,6 +1,6 @@
 ---
 name: write-tests
-description: Use when writing tests, adding test coverage, choosing test types, testing a specific function, or when asked "should I mock this", "how should I test this", "write tests for", "add tests", "test this function", "write integration tests", or "rewrite test suite". Provides three-layer testing strategy, specification-grade testing workflow, boundary mocking, and Go-specific patterns including Cobra command, Bubble Tea model, and runner testing.
+description: Use when writing tests, adding test coverage, choosing test types, testing a specific function, or when asked "should I mock this", "how should I test this", "write tests for", "add tests", "test this function", "write integration tests", or "rewrite test suite". Provides a boundary-first testing strategy (wire-level fakes, httptest, in-process commands), specification-grade workflow, and Go-specific patterns including Cobra command, Bubble Tea model, and runner testing.
 ---
 
 # Writing Specification-Grade Tests
@@ -58,42 +58,45 @@ tools/cluster/
 - **`test/`** — E2E tests that execute the built binary
 - **`testdata/`** — static fixtures (ignored by Go tooling)
 
-## Three-Layer Testing Strategy
+## Testing Strategy: Test at the Boundary
 
 > "The more your tests resemble the way your software is used, the more
 > confidence they can give you." — Kent C. Dodds
 
-**Every testable behavior gets a Layer 3 (E2E) test.** Layers 1 and 2 supplement
-Layer 3 — they keep CI green when real tools aren't available, but they never
-replace E2E coverage.
+Test the observable contract, and mock only at the process/network boundary —
+never inside your own code.
 
-| Layer | Technique              | Purpose                                       |
-|-------|------------------------|-----------------------------------------------|
-| 3     | Real execution (E2E)   | **Required.** Proves the real thing works      |
-| 1     | Filesystem isolation   | CI fallback — logic with real files via `t.TempDir()` |
-| 2     | Interface-based fakes  | CI fallback — verifies command wiring only     |
+| What the code does | How to test it |
+|--------------------|----------------|
+| Pure computation | Call it with constructed inputs; assert the return and its edge cases |
+| Reads/writes files | Real files in `t.TempDir()` — no filesystem mocks |
+| Shells out to a tool (nomad/terraform/uv) | Fake the executable on `PATH`, record its argv, assert the exact command built |
+| Talks HTTP (an API, Prometheus, Loki) | `httptest.Server` — assert the request sent, parse a real response |
+| Command (Cobra) | Execute it in-process; assert stdout/stderr and error/exit behavior |
+| State machine (TUI) | Send messages to `Update`, assert the returned model; assert `View` output |
 
-**Layer 3 is the standard.** Build the binary, run real commands, assert on real
-output. Guard E2E tests with `t.Skip()` when the environment isn't available
-(missing binary, no cluster) — but the tests must exist.
+**Mock at the wire, never internals.** For a runner that does
+`exec.Command("nomad", "job", "run", path)`, install a fake `nomad` on `PATH`
+that records its argv, then assert the argv. Do **not** define a `CommandRunner`
+interface and assert "Run was called" — that proves the code called your fake,
+not that it built the right command, and it breaks on harmless refactors. Same
+for HTTP: point the client at an `httptest.Server`; don't stub the client type.
+Your own internal modules are always used for real.
 
-**Layers 1 and 2 are CI safety nets.** They catch regressions fast when E2E can't
-run. Layer 2 fakes can only verify your code builds the *intended* command — they
-cannot prove the command actually works. Treat them as regression guards, not proof
-of correctness.
+**Build the binary; never skip on its absence.** End-to-end tests that run the
+built CLI belong in `test/`, and `TestMain` builds the binary once before they
+run — a missing binary is a hard failure, not a `t.Skip()`. (Skipping here is a
+false-green: if the coverage gate runs `go test` without building first, every
+skipped test silently "passes.") A subprocess test does not count toward the
+tested package's coverage, so cover command logic **in-process** as well.
 
-**Choosing the primary layer by function type:**
-- Reads/writes files → **Layer 1** (integration with `t.TempDir()`)
-- Shells out to external tools → **Layer 2** (boundary fake) + **Layer 3** (E2E with `t.Skip()`)
-- Pure computation → **Unit test**
-- State machine (TUI) → State transition tests (send messages, assert model)
+**Prove the negative for destructive ops.** For a dry-run, a declined
+confirmation, or an empty-input guard, wire the fake boundary to **fail the
+test** if a mutating call arrives — making "did not mutate" a structural
+guarantee, not an assertion a later edit could quietly drop.
 
-**Mock at the boundary, not inside:**
-- External commands (nomad, terraform, ansible) — define a narrow interface, inject a fake
-- Filesystem operations — use `t.TempDir()` with real reads and writes, not mocks
-- Internal modules and your own code — always use the real thing
-
-See [references/go.md](references/go.md) for the CommandRunner pattern.
+See [references/go.md](references/go.md) for the wire-fake, `httptest`, and
+in-process command patterns.
 
 ## Table-Driven Tests
 
@@ -144,6 +147,10 @@ See [references/go.md](references/go.md) for the full assertion reference.
 | Bad Pattern                      | Good Pattern                               |
 |----------------------------------|--------------------------------------------|
 | Testing mock behavior            | Test actual outcome with real dependencies |
+| Interface fake asserting "method X was called" | Fake the executable on `PATH` / `httptest`; assert the real argv or request |
+| Asserting a struct literal you just built | Assert the effect through the boundary (the flag the fake received) |
+| `t.Skip()` on a missing-but-buildable binary/tool | Build it in `TestMain`; skip only a genuinely external live service |
+| Regression test that passes without the fix | Ensure it fails against the pre-fix code |
 | One assertion per function       | Group related assertions in one test       |
 | Copy-pasting setup across tests  | Extract to `t.Helper()` function           |
 | Percentage-based coverage goals  | Cover behavior and edge cases              |
@@ -158,7 +165,9 @@ See [references/go.md](references/go.md) for the full assertion reference.
 - [ ] Happy path covered
 - [ ] Error conditions and edge cases handled
 - [ ] Error messages asserted (not just `wantErr: true`)
-- [ ] Real dependencies used (fakes only at external boundaries)
+- [ ] Boundaries mocked at the wire (fake exec on `PATH` / `httptest`), not via internal interfaces
+- [ ] Destructive-op guards prove the negative (the fake fails the test on any mutating call)
+- [ ] A bug fix ships a regression test that fails before the fix
 - [ ] Tests survive refactoring
 - [ ] Test names read as specifications
 - [ ] Table-driven where multiple scenarios exist

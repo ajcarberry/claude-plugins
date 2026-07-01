@@ -1,397 +1,409 @@
 # Go Testing Patterns
 
-Comprehensive Go-specific patterns for specification-grade testing.
+Comprehensive Go-specific patterns for specification-grade testing. The guiding
+rule: **test the observable contract, and mock only at the process/network
+boundary — never inside your own code.**
 
 ## Dependencies
 
-Standard import block for all test files:
+Standard library `testing` only — no assertion framework. Tests read as
+`if got != want { t.Errorf(...) }`, which keeps failures explicit and adds no
+dependency to the module.
 
 ```go
 import (
+    "reflect"
+    "strings"
     "testing"
-
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/require"
 )
 ```
 
-`testify` is the only testing dependency. No gomock, no testcontainers, no ginkgo.
+For value comparison use `==` (scalars) or `reflect.DeepEqual` (slices/maps/
+structs). For substrings use `strings.Contains`. For error identity/shape use
+`errors.Is` / `errors.As`. If a project already standardises on `testify`, match
+it — but do not introduce it into a stdlib codebase.
 
-If `testify` is not yet in `go.mod`, add it:
+## Assertions (stdlib)
 
-```bash
-cd tools/cluster && go get github.com/stretchr/testify
+Two roles, mirroring `require` vs `assert`:
+
+- **Precondition failure → `t.Fatalf`** (stop; the rest of the test is moot).
+- **Behavior check → `t.Errorf`** (record and continue; see all failures at once).
+
+```go
+// Precondition — stop if setup fails
+cfg, err := config.Load()
+if err != nil {
+    t.Fatalf("Load() error = %v", err)
+}
+
+// Checks — continue so every failure surfaces
+if got := cfg.Name; got != "caddy" {
+    t.Errorf("Name = %q, want %q", got, "caddy")
+}
+if got := cfg.Port; got != 8080 {
+    t.Errorf("Port = %d, want %d", got, 8080)
+}
 ```
+
+Common shapes:
+
+```go
+if !reflect.DeepEqual(got, want) { t.Errorf("argv = %v, want %v", got, want) }
+if !strings.Contains(out, "Validating") { t.Errorf("output missing marker: %q", out) }
+if err == nil { t.Fatal("expected an error, got nil") }
+if !strings.Contains(err.Error(), "not found") { t.Errorf("error = %q, want 'not found'", err) }
+if !errors.Is(err, os.ErrNotExist) { t.Errorf("want ErrNotExist, got %v", err) }
+if errors.Unwrap(err) == nil { t.Errorf("error %q should wrap a cause", err) }
+```
+
+Assert on the **observable behavior** — return values, error message/shape,
+stdout/stderr, the command a runner built, the request a client sent. Never
+assert on internal calls or private state.
 
 ## Table-Driven Tests
 
-The default pattern for multiple scenarios:
+The default pattern for multiple scenarios of one function:
 
 ```go
-func TestFindService(t *testing.T) {
-    tests := []struct {
-        name    string
-        setup   func(t *testing.T, dir string)
-        input   string
-        want    string
-        wantErr string
+func TestPercentCheck_Boundaries(t *testing.T) {
+    const warn, fail = 80.0, 90.0
+    cases := []struct {
+        name string
+        val  float64
+        want Status
     }{
-        {
-            name:  "exact match returns full path",
-            setup: func(t *testing.T, dir string) { createJobFile(t, dir, "caddy") },
-            input: "caddy",
-            want:  "caddy.nomad.hcl",
-        },
-        {
-            name:  "match with extension strips correctly",
-            setup: func(t *testing.T, dir string) { createJobFile(t, dir, "caddy") },
-            input: "caddy.nomad.hcl",
-            want:  "caddy.nomad.hcl",
-        },
-        {
-            name:    "missing service returns descriptive error",
-            setup:   func(t *testing.T, dir string) {},
-            input:   "nonexistent",
-            wantErr: "not found",
-        },
+        {"exactly at fail is Fail", 90.0, StatusFail},
+        {"just below fail is Warn", 89.9, StatusWarn},
+        {"exactly at warn is Warn", 80.0, StatusWarn},
+        {"just below warn is OK", 79.9, StatusOK},
     }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            t.Parallel()
-            cfg := setupTestConfig(t)
-            tt.setup(t, cfg.NomadJobsDir)
-
-            runner := NewRunner(cfg)
-            got, err := runner.FindService(tt.input)
-
-            if tt.wantErr != "" {
-                require.Error(t, err)
-                assert.Contains(t, err.Error(), tt.wantErr)
-                return
+    for _, c := range cases {
+        t.Run(c.name, func(t *testing.T) {
+            got := percentCheck("Disk", oneSample("node-00", c.val), nil, warn, fail, instanceLabel)
+            if got.Status != c.want {
+                t.Errorf("value %.1f: got %v, want %v", c.val, got.Status, c.want)
             }
-            require.NoError(t, err)
-            assert.Contains(t, got, tt.want)
         })
     }
 }
 ```
 
-**When NOT to use tables:**
-- Single-scenario tests — just write the test directly
-- Tests needing complex per-case setup that doesn't fit a `func` field
-- Tests where the struct definition is larger than the test body
+Enumerate the edges explicitly: empty, single, uneven, boundary (`>=` vs `>`),
+off-by-one, nil. Boundary and empty cases are where real bugs hide.
+
+**When NOT to use tables:** single-scenario tests, cases needing complex per-case
+setup, or where the struct is larger than the test body.
 
 ## Test Naming
 
-Pattern: `Test<Function>_<Scenario>_<Expected>`
-
-Names read as specifications:
+Pattern: `Test<Function>_<Scenario>_<Expected>` — names read as specifications:
 
 ```go
-// Services
-func TestListServices_EmptyDir_ReturnsEmpty(t *testing.T)
-func TestListServices_MultipleFiles_ReturnsSorted(t *testing.T)
-func TestFindService_ExactMatch_ReturnsPath(t *testing.T)
-func TestFindService_NotFound_ReturnsError(t *testing.T)
-
-// Infrastructure
-func TestListModules_IgnoresHiddenDirs(t *testing.T)
-func TestListModules_IgnoresDirsWithoutTfFiles(t *testing.T)
-func TestFindModule_NotADirectory_ReturnsError(t *testing.T)
-
-// Validation
-func TestValidate_InvalidJSON_ReturnsParseError(t *testing.T)
-func TestValidate_MissingRequiredField_ListsFields(t *testing.T)
-
-// E2E
-func TestClusterInfo_ShowsAllSections(t *testing.T)
-func TestClusterHelp_ShowsUsage(t *testing.T)
+func TestResolveLimit_UnknownNode_ListsAvailable(t *testing.T)
+func TestRunPreview_IsDryRunAtWire(t *testing.T)
+func TestDeleteVolume_WireArgv(t *testing.T)
+func TestControlPlane_EmptyNodes_Fails(t *testing.T)
 ```
 
-## Assertions
+## Mocking at the Wire — Fake Executables on PATH
 
-### `require` vs `assert`
+For code that shells out (`exec.Command("nomad", ...)`), install a fake
+executable of that name on `PATH` that records its argv and working directory,
+then assert the exact command the code built. This tests the real contract — the
+command line — and survives refactors, unlike an injected interface.
 
-- **`require`** — stops the test immediately. Use for preconditions
-- **`assert`** — records failure, continues. Use for the checks themselves
+Extract the recorder into a shared `internal/testutil` package once more than one
+package needs it (it imports `testing`, so it is only ever imported from
+`_test.go` files and never enters the production binary):
 
 ```go
-// Setup — use require (no point continuing if setup fails)
-cfg, err := loadConfig(path)
-require.NoError(t, err)
-require.NotNil(t, cfg)
+// internal/testutil/exec.go
+package testutil
 
-// Checks — use assert (see all failures at once)
-assert.Equal(t, "caddy", cfg.Name)
-assert.Equal(t, 8080, cfg.Port)
+type Options struct {
+    ExitCode int
+    Stdout   string // exact bytes echoed to stdout on each call
+}
+
+type Recorder struct{ /* ... */ }
+
+func (r *Recorder) Args() []string    { /* argv of the last call */ }
+func (r *Recorder) Cwd() string       { /* working dir of the last call */ }
+func (r *Recorder) Count() int        { /* number of invocations */ }
+func (r *Recorder) Calls() []Invocation
+
+// FakeExec writes a fake `name` into a temp dir, prepends it to PATH (restored
+// by t.Setenv), and records argv + cwd. Deliver Stdout via a sidecar file the
+// script `cat`s — not string-interpolated — so multi-line JSON survives intact.
+func FakeExec(t *testing.T, name string, opts Options) *Recorder { /* ... */ }
 ```
 
-### Assertion Reference
+Using it — assert the exact argv and the directory the command ran in:
 
 ```go
-// Equality
-assert.Equal(t, expected, actual)
-assert.NotEqual(t, unexpected, actual)
+func TestDeployService_WireArgv(t *testing.T) {
+    cfg := setupTestConfig(t)
+    rec := testutil.FakeExec(t, "nomad", testutil.Options{})
 
-// Errors
-assert.NoError(t, err)
-assert.Error(t, err)
-assert.ErrorContains(t, err, "not found")
-assert.ErrorIs(t, err, os.ErrNotExist)
+    if err := NewRunner(cfg).DeployService("caddy.nomad.hcl"); err != nil {
+        t.Fatalf("DeployService() error = %v", err)
+    }
 
-// Collections
-assert.Len(t, items, 3)
-assert.Contains(t, items, "caddy")
-assert.Empty(t, items)
-assert.ElementsMatch(t, expected, actual)  // order-independent
-
-// Strings
-assert.Contains(t, output, "Validating")
-assert.NotContains(t, output, "error")
-
-// Nil / Boolean / Files
-assert.Nil(t, result)
-assert.NotNil(t, result)
-assert.True(t, ok)
-assert.FileExists(t, path)
-assert.DirExists(t, dir)
+    want := []string{"job", "run", "caddy.nomad.hcl"}
+    if got := rec.Args(); !reflect.DeepEqual(got, want) {
+        t.Errorf("argv = %v, want %v", got, want)
+    }
+}
 ```
+
+The fake's `Stdout` feeds multi-call flows (e.g. `nomad job allocs -json` →
+parse → `nomad alloc logs <id>`): return the JSON as `Options.Stdout`, then
+assert the second call's argv via `rec.Calls()`. A non-zero `ExitCode` lets you
+prove error propagation.
+
+**Do not** instead define `type CommandRunner interface { Run(...) }` and assert
+`fake.Calls[0][0] == "nomad"` — that only proves the code called your fake, not
+that it built the right command, and it couples the test to an interface that
+exists solely for testing.
+
+## Mocking at the Wire — httptest
+
+For an HTTP client, point it at an `httptest.Server` and assert both the request
+sent and that a real response parses. Key the handler on **method and path** and
+decode the body — a path-only mock lets a write silently downgrade to `GET`:
+
+```go
+func TestCreateChannel_PostsWrappedBody(t *testing.T) {
+    var got struct {
+        method, path string
+        body         []byte
+    }
+    srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        got.method, got.path = r.Method, r.URL.Path
+        got.body, _ = io.ReadAll(r.Body)
+        _, _ = w.Write([]byte(`{"id":"srv-assigned"}`))
+    }))
+    defer srv.Close()
+
+    c := New(srv.URL, 5*time.Second)
+    out, err := c.CreateChannel(context.Background(), Channel{Name: "Kids"})
+    if err != nil {
+        t.Fatalf("CreateChannel: %v", err)
+    }
+    if got.method != http.MethodPost || got.path != "/api/channels" {
+        t.Errorf("request = %s %s, want POST /api/channels", got.method, got.path)
+    }
+    var sent struct{ Channel Channel `json:"channel"` }
+    if err := json.Unmarshal(got.body, &sent); err != nil {
+        t.Fatalf("decode body: %v", err)
+    }
+    if sent.Channel.Name != "Kids" {
+        t.Errorf("sent channel = %+v, want Kids", sent.Channel)
+    }
+    if out.ID != "srv-assigned" { t.Errorf("id = %q, want srv-assigned", out.ID) }
+}
+```
+
+## Proving the Negative for Destructive Ops
+
+For a dry-run, a declined confirmation, or an empty-input guard, wire the fake
+boundary to **fail the test** if a mutating call arrives. "Did not mutate"
+becomes structural, not an afterthought:
+
+```go
+srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/programming") {
+        t.Errorf("MUTATION LEAK: unexpected POST %s (channel would be overwritten)", r.URL.Path)
+    }
+    // ... serve the reads the code needs ...
+}))
+```
+
+The same shape works for exec: after driving the "should not act" path, assert
+`rec.Count() == 0` — the fake `nomad`/`terraform` must never have run.
 
 ## Helper Functions
 
-Mark every helper with `t.Helper()` for accurate error reporting:
+Mark every helper with `t.Helper()` for accurate failure line numbers:
 
 ```go
 func createJobFile(t *testing.T, dir, name string) {
     t.Helper()
-    content := `job "` + name + `" { datacenters = ["dc1"] }`
     path := filepath.Join(dir, name+".nomad.hcl")
-    require.NoError(t, os.WriteFile(path, []byte(content), 0644))
-}
-```
-
-**When to extract helpers:**
-- Same setup appears in 3+ tests → extract to file-local helper
-- Same helper appears in 3+ packages → extract to `internal/testutil/`
-
-### testutil Package
-
-Shared helpers live in `internal/testutil/`. Pattern: fixture builders that
-accept variadic args for flexibility.
-
-```go
-// SetupServiceDir creates a temp dir pre-populated with job files.
-func SetupServiceDir(t *testing.T, services ...string) (string, *config.Config) {
-    t.Helper()
-    dir := t.TempDir()
-    jobsDir := filepath.Join(dir, "nomad/jobs")
-    require.NoError(t, os.MkdirAll(jobsDir, 0755))
-    for _, svc := range services {
-        WriteFile(t, jobsDir, svc+".nomad.hcl",
-            `job "`+svc+`" { datacenters = ["dc1"] }`)
+    if err := os.WriteFile(path, []byte(`job "`+name+`" {}`), 0644); err != nil {
+        t.Fatalf("write job file: %v", err)
     }
-    return dir, &config.Config{RepoRoot: dir, NomadJobsDir: jobsDir}
 }
 ```
+
+Extract to a file-local helper at 3+ uses in a package; extract to
+`internal/testutil` at 3+ packages.
 
 ## Temporary Directories and Environment
 
 ```go
-dir := t.TempDir()                              // auto-cleaned after test
-t.Setenv("NOMAD_ADDR", "http://localhost:4646") // auto-restored after test
+dir := t.TempDir()                              // auto-cleaned
+t.Setenv("PATH", dir+":"+os.Getenv("PATH"))     // auto-restored (not parallel-safe)
 ```
+
+When a test changes the process working directory or `os.Stdin`/`os.Stdout`, it
+cannot be `t.Parallel()`.
+
+## Testing Cobra Commands In-Process
+
+Command-layer coverage must be **in-process** — a subprocess test (below) does
+not count toward the command package's coverage. Execute the command's `RunE`
+directly. If the command prints via `fmt.Printf` to the real `os.Stdout` (common)
+rather than `cmd.OutOrStdout()`, capture the OS-level stream:
+
+```go
+// captureOutput redirects the real os.Stdout/os.Stderr around fn.
+func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
+    t.Helper()
+    origOut, origErr := os.Stdout, os.Stderr
+    outR, outW, _ := os.Pipe()
+    errR, errW, _ := os.Pipe()
+    os.Stdout, os.Stderr = outW, errW
+    outC, errC := make(chan string, 1), make(chan string, 1)
+    go func() { var b bytes.Buffer; io.Copy(&b, outR); outC <- b.String() }()
+    go func() { var b bytes.Buffer; io.Copy(&b, errR); errC <- b.String() }()
+    func() {
+        defer func() { os.Stdout, os.Stderr = origOut, origErr; outW.Close(); errW.Close() }()
+        fn()
+    }()
+    return <-outC, <-errC
+}
+```
+
+Combine with a `PATH` fake (fake `uv`/`nomad`) and, for confirmation prompts that
+read `os.Stdin` directly, a stdin swap. Reset any package-level flag globals you
+set via `t.Cleanup`.
+
+For `os.Exit` code contracts (e.g. a health command that exits 0/1/2), either
+extract a pure function that returns the code and test that directly, or drive
+the **built binary** as a subprocess and assert on its exit code — a wrapped
+`os.Exit` in-process cannot be observed.
 
 ## CLI Binary Testing (E2E)
 
-Layer 3 — execute the real binary. E2E tests live in `test/` and assert on
-exit codes, stdout, and stderr:
+End-to-end tests that run the real binary live in `test/`. Build the binary once
+in `TestMain` — **never `t.Skip()` when it is absent** (that skip is a
+false-green: the coverage gate runs `go test` without building first, so the test
+silently passes):
 
 ```go
+var builtBinary string
+
+func TestMain(m *testing.M) {
+    tmp, err := os.MkdirTemp("", "cli-bin")
+    if err != nil { log.Fatalf("mkdir temp: %v", err) }
+    bin := filepath.Join(tmp, "cluster")
+    build := exec.Command("go", "build", "-o", bin, "./cmd/cluster")
+    build.Dir = ".." // module root
+    if out, err := build.CombinedOutput(); err != nil {
+        os.RemoveAll(tmp)
+        log.Fatalf("build failed: %v\n%s", err, out) // hard fail, not skip
+    }
+    builtBinary = bin
+    code := m.Run()
+    os.RemoveAll(tmp) // os.Exit skips defers — clean up explicitly
+    os.Exit(code)
+}
+
 func TestClusterInfo_ShowsAllSections(t *testing.T) {
-    binary := clusterBinaryPath(t)  // helper that t.Skip()s if not built
-
-    cmd := exec.Command(binary, "info")
-    output, err := cmd.CombinedOutput()
-    require.NoError(t, err, "cluster info failed: %s", output)
-
-    for _, section := range []string{"Nodes", "Groups", "Services"} {
-        assert.Contains(t, string(output), section)
+    out, err := exec.Command(builtBinary, "info").CombinedOutput()
+    if err != nil { t.Fatalf("cluster info failed: %v\n%s", err, out) }
+    for _, section := range []string{"NODES", "GROUPS", "SERVICES"} {
+        if !strings.Contains(string(out), section) {
+            t.Errorf("output missing section %q", section)
+        }
     }
 }
 ```
 
-## Testing Cobra Commands
-
-For testing command logic without building the full binary (Layer 1/2), set up
-the command directly and capture output:
-
-```go
-func TestInfoCommand_ShowsAllSections(t *testing.T) {
-    cmd := newInfoCmd()
-    buf := new(bytes.Buffer)
-    cmd.SetOut(buf)
-    cmd.SetArgs([]string{})
-
-    require.NoError(t, cmd.Execute())
-
-    output := buf.String()
-    for _, section := range []string{"Nodes", "Groups", "Services"} {
-        assert.Contains(t, output, section)
-    }
-}
-```
-
-For commands that need config, inject via the command's context or a setup helper.
-Use E2E binary tests (Layer 3) for full CLI integration — Cobra command tests
-complement those by covering command-level logic without the binary build step.
+Assert on the **real** headers/content the binary prints — verify against source,
+not against assumptions (a stale assertion that never matches will pass only
+because the test was skipping).
 
 ## Testing Bubble Tea Models
 
-Test `Update()` by sending `tea.Msg` values and asserting on the returned model.
-Test `View()` by asserting on the rendered string.
+Test `Update()` by sending `tea.Msg` values and asserting the returned model;
+test `View()` on the rendered string. Keep to state transitions and visible
+output — not exact spacing or ANSI codes:
 
 ```go
 func TestMenuUpdate_SpaceTogglesSelection(t *testing.T) {
     m := newTestModel([]string{"caddy-dns", "grafana-dashboards"})
-
     result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
-    updated := result.(model)
-
-    assert.True(t, updated.selectedModules[0], "space should toggle first module on")
-}
-
-func TestMenuView_ShowsAllOptions(t *testing.T) {
-    m := newTestModel([]string{"caddy-dns", "grafana-dashboards"})
-
-    view := m.View()
-
-    assert.Contains(t, view, "caddy-dns")
-    assert.Contains(t, view, "grafana-dashboards")
+    if !result.(model).selectedModules[0] {
+        t.Error("space should toggle the first module on")
+    }
 }
 ```
-
-Keep TUI tests focused on state transitions (Update) and visible output (View).
-Don't test rendering details like exact spacing or ANSI codes — those are
-implementation details that break on terminal width changes.
-
-## Testing Runners
-
-The project follows a consistent pattern: `NewRunner(cfg)` → `runner.Action()`.
-Most runner methods interact with the filesystem (listing files, reading configs).
-
-**Default approach (Layer 1):** Create a temp dir with `t.TempDir()`, populate it
-with test fixtures, pass a config pointing at the temp dir.
-
-**When the runner shells out** (Layer 2): Use the CommandRunner interface pattern
-below.
-
-## CommandRunner Pattern (Boundary Fakes)
-
-Layer 2 — for logic that shells out to external tools. Define a narrow
-interface, inject a fake in tests:
-
-```go
-type CommandRunner interface {
-    Run(name string, args ...string) ([]byte, error)
-}
-
-// Fake records calls and returns canned responses
-type FakeRunner struct {
-    Output []byte
-    Err    error
-    Calls  [][]string
-}
-
-func (f *FakeRunner) Run(name string, args ...string) ([]byte, error) {
-    f.Calls = append(f.Calls, append([]string{name}, args...))
-    return f.Output, f.Err
-}
-
-// Test uses the fake
-func TestValidateService_PassesCorrectArgs(t *testing.T) {
-    fake := &FakeRunner{Output: []byte("ok")}
-    runner := NewRunner(cfg, WithCommandRunner(fake))
-
-    require.NoError(t, runner.Validate("caddy"))
-    require.Len(t, fake.Calls, 1)
-    assert.Equal(t, "nomad", fake.Calls[0][0])
-}
-```
-
-Use sparingly — most tests should use filesystem isolation (Layer 1).
 
 ## Skipping Tests
 
-Guard tests that need external tools or environment:
+Skip **only** for a test that genuinely needs a *running* external service (a
+live Nomad/Consul cluster) — never for a missing binary or a tool you can fake:
 
 ```go
-if _, err := exec.LookPath("nomad"); err != nil {
-    t.Skip("nomad not found in PATH")
-}
-if os.Getenv("NOMAD_ADDR") == "" {
-    t.Skip("NOMAD_ADDR not set")
+func TestServicesValidate_NoArgs(t *testing.T) {
+    if os.Getenv("NOMAD_ADDR") == "" {
+        t.Skip("NOMAD_ADDR not set") // needs a live cluster
+    }
+    // ...
 }
 ```
 
+Anything testable without the live service should use a wire fake instead — a
+skip that hides testable behavior is a false-green.
+
 ## Parallel Tests
 
-Use `t.Parallel()` in table-driven subtests — each subtest gets its own `t.TempDir()`
-so there's no shared state to conflict:
+Use `t.Parallel()` in table-driven subtests where each is isolated by its own
+`t.TempDir()`:
 
 ```go
 for _, tt := range tests {
     t.Run(tt.name, func(t *testing.T) {
         t.Parallel()
-        // each subtest is isolated via t.TempDir()
+        // isolated via t.TempDir()
     })
 }
 ```
 
-**Don't parallelize** when tests share mutable state (package-level variables,
-environment variables). `t.Setenv` is not parallel-safe with the parent test — only
-use it in non-parallel tests or in subtests where the parent doesn't also call
-`t.Parallel()`.
+**Don't parallelize** tests that mutate shared state — package-level variables,
+`os.Stdin`/`os.Stdout`, the working directory, or `t.Setenv` (not parallel-safe
+with the parent test).
+
+## Determinism
+
+Non-deterministic tests are worse than none — they train the team to ignore red.
+Two frequent sources, both real bugs when they reach production code:
+
+- **Map iteration order.** Ranging a `map` for anything order-sensitive (picking
+  a winner, applying overlapping string replacements) is nondeterministic. Sort
+  keys first, or use an ordered slice.
+- **Unseeded randomness / time.** Seed RNGs from a fixed value and inject clocks;
+  assert reproducibility (same seed → same output) explicitly.
 
 ## Test Fixtures
 
-Keep fixtures minimal — the smallest structure that exercises the contract, nothing
-more. A Nomad job fixture doesn't need real task config if you're testing file
-discovery.
+Keep fixtures minimal — the smallest structure that exercises the contract.
 
-- **`t.TempDir()`** — default. Dynamic files that tests create, modify, and assert on.
-  Each test gets a fresh directory; cleanup is automatic.
-- **`testdata/`** — static, read-only fixtures checked into the repo. Use for complex
-  structures that would be tedious to build programmatically (full config files, golden
-  output files). Go tooling ignores `testdata/` directories.
-
-Prefer `t.TempDir()` unless the fixture is complex enough that building it in code
-would obscure the test's intent.
+- **`t.TempDir()`** — default. Dynamic files tests create and assert on.
+- **`testdata/`** — static, read-only fixtures checked in (Go tooling ignores it).
+  Use for complex payloads (full config or golden output files).
 
 ```go
-data, err := os.ReadFile("testdata/valid-job.nomad.hcl")  // static fixture
-dir := t.TempDir()                                         // dynamic workspace
+data, err := os.ReadFile("testdata/valid-job.nomad.hcl") // static fixture
+dir := t.TempDir()                                        // dynamic workspace
 ```
-
-## Setup and Teardown
-
-Prefer per-test `t.Helper()` functions — they're simpler, parallel-safe, and
-auto-cleanup:
-
-```go
-func setupTestConfig(t *testing.T) *config.Config {
-    t.Helper()
-    dir := t.TempDir()
-    require.NoError(t, os.MkdirAll(filepath.Join(dir, "nomad/jobs"), 0755))
-    return &config.Config{RepoRoot: dir, NomadJobsDir: filepath.Join(dir, "nomad/jobs")}
-}
-```
-
-Use `TestMain` only for expensive one-time setup (building a binary for E2E tests).
 
 ## Golden Files
 
-For complex output comparison. Update with `go test -run TestOutput -update`:
+For complex output comparison, update with `go test -run TestOutput -update`:
 
 ```go
 var update = flag.Bool("update", false, "update golden files")
@@ -400,10 +412,12 @@ func TestOutput_MatchesGolden(t *testing.T) {
     got := generateOutput()
     golden := filepath.Join("testdata", t.Name()+".golden")
     if *update {
-        require.NoError(t, os.WriteFile(golden, []byte(got), 0644))
+        if err := os.WriteFile(golden, []byte(got), 0644); err != nil {
+            t.Fatal(err)
+        }
     }
     want, err := os.ReadFile(golden)
-    require.NoError(t, err)
-    assert.Equal(t, string(want), got)
+    if err != nil { t.Fatal(err) }
+    if got != string(want) { t.Errorf("output != golden; run -update if intended") }
 }
 ```
