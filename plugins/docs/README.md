@@ -13,8 +13,8 @@ Autonomous documentation management for the homelab monorepo.
 ### Command
 
 **`/docs`** — Autonomous documentation workflow:
-- No arguments: detect gaps → write/update → multi-agent review → confidence score → fix → finalize
-- `review <path>`: focused scrutiny of specific docs against codebase accuracy
+- No arguments: detect gaps → write/update → review → fix → finalize
+- `review <path>`: focused panel scrutiny of specific docs against codebase accuracy
 
 ### Skill
 
@@ -33,16 +33,15 @@ Autonomous documentation management for the homelab monorepo.
 
 ## How It Works
 
-The `/docs` command uses multi-agent parallel review with confidence scoring (same pattern as the official code-review plugin):
+The `/docs` command uses risk-scaled review (same pattern as launchpad's peer-review skill):
 
 1. **Triage** — Scan recent git changes
 2. **Gap analysis** — Librarian identifies what's missing or stale
 3. **Resolve** — Historian writes or updates docs
-4. **Review** — 3 parallel agents check accuracy, standards, completeness
-5. **Score** — Each issue scored 0-100 for confidence
-6. **Filter** — Only issues scoring 80+ are acted on
-7. **Fix** — Historian addresses high-confidence issues
-8. **Finalize** — Report what was created/updated
+4. **Review** — One reviewer covering accuracy, standards, and completeness (parallel reviewers for 3+ docs; a panel in `review <path>` mode)
+5. **Filter** — The independent-reviewer test drops anything another qualified reviewer wouldn't flag
+6. **Fix** — Historian addresses surviving issues
+7. **Finalize** — Report what was created/updated
 
 ## Documentation Structure
 

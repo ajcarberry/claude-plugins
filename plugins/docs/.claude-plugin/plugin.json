@@ -1,7 +1,7 @@
 {
   "name": "docs",
-  "version": "0.1.3",
-  "description": "Autonomous documentation management with multi-agent review. Detects drift, writes docs, and self-reviews using confidence scoring.",
+  "version": "0.2.0",
+  "description": "Autonomous documentation management with risk-scaled review. Detects drift, writes docs, and self-reviews against the codebase.",
   "author": {
     "name": "Alex Carberry"
   }

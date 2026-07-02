@@ -1,5 +1,5 @@
 ---
-description: Autonomous documentation management — detect gaps, write docs, and self-review with confidence scoring
+description: Autonomous documentation management — detect gaps, write docs, and self-review against the codebase
 allowed-tools: Bash(git *), Read, Grep, Glob, Write, Edit, Task, AskUserQuestion
 argument-hint: "[review <path>]"
 ---
@@ -49,35 +49,28 @@ For each gap (in priority order), use a Sonnet agent (the Historian) to write or
 - Save to the correct location
 - Update `docs/README.md` if adding a new doc
 
-### Step 4: Multi-Agent Review
+### Step 4: Review
 
-For each doc written or updated in Step 3, launch 3 parallel Sonnet agents:
+For 1-2 docs written/updated: **one Sonnet reviewer** covering all three dimensions
+below as sections of a single prompt. For 3+ docs: one reviewer per doc, in parallel.
 
-1. **Codebase Accuracy Agent**: Read the doc and verify every claim, command, path, and config example against actual source code. Check that code snippets are runnable. Return list of inaccuracies with evidence.
+1. **Codebase accuracy** — verify every claim, command, path, and config example against actual source code; code snippets must be runnable. Inaccuracies need evidence.
+2. **Standards compliance** — Diátaxis type adherence (ONE purpose), style guide (active voice, concise, no marketing language), correct placement and structure.
+3. **Completeness** — missing cross-references, missing template sections, broken internal links, missing troubleshooting/next-steps.
 
-2. **Standards Compliance Agent**: Read the doc and check Diátaxis type adherence (does it serve ONE purpose?), style guide compliance (active voice, concise, no marketing language), correct directory placement, proper structure (title, prerequisites, steps, verification). Return list of violations.
+Reviewers must verify concerns against source before reporting them.
 
-3. **Completeness Agent**: Read the doc and check for missing cross-references to related docs, missing sections expected by the template, broken internal links, missing troubleshooting or next-steps sections. Return list of gaps.
+### Step 5: Filter & Fix
 
-### Step 5: Confidence Scoring
+Filter each issue with the **independent-reviewer test**: would a different qualified
+reviewer, given this doc and the style guide, independently flag it? Drop everything
+else — see the false-positive list at the bottom of this command.
 
-For each issue found in Step 4, use a parallel Haiku agent to score confidence 0-100:
+- If no issues survive, proceed to Step 6
+- Use a Sonnet agent (the Historian) to fix surviving issues
+- If more than 3 issues were fixed, loop back to Step 4 for one re-review pass (maximum 1 re-review)
 
-Provide this rubric to each scoring agent verbatim:
-- 0: Not confident at all. This is a false positive — the doc is actually correct, or the issue is a style preference not in the style guide.
-- 25: Somewhat confident. Might be an issue but cannot verify against source code. If stylistic, not explicitly in the style guide.
-- 50: Moderately confident. Verified as a real issue but minor — formatting, slight wording improvement, non-critical missing section.
-- 75: Highly confident. Verified against source code that the doc is inaccurate or missing critical content. Directly impacts reader's ability to use the documentation.
-- 100: Absolutely certain. Confirmed the doc makes a factually wrong claim, references a removed feature, or contains a broken command that will fail.
-
-### Step 6: Filter & Fix
-
-- Discard all issues scoring below 80
-- If no issues remain, proceed to Step 7
-- Use a Sonnet agent (the Historian) to fix remaining issues
-- If significant fixes were made (more than 3 issues fixed), loop back to Step 4 for one re-review pass (maximum 1 re-review)
-
-### Step 7: Finalize
+### Step 6: Finalize
 
 Report summary:
 - Docs created (with paths)
@@ -97,48 +90,41 @@ Use a Haiku agent to:
 - Map each claim to the source code location that could verify it
 - Return: list of claims with their verification targets
 
-### Step 2: Multi-Agent Scrutiny
+### Step 2: Scrutiny
 
-Launch 4 parallel Sonnet agents to examine the doc(s):
+This mode is an explicit deep-review request, so use a panel: launch 2 parallel
+Sonnet agents (a single doc) or up to 4 (a directory), splitting these dimensions:
 
-1. **Codebase Accuracy Agent**: For every factual claim in the doc, read the actual source code and verify. Check commands work, paths exist, configs are current, behavior described matches implementation. Return issues with evidence (what doc says vs what code shows).
+1. **Codebase accuracy** — verify every factual claim against source: commands work, paths exist, configs current, described behavior matches implementation. Evidence required (what doc says vs what code shows).
+2. **Freshness** — `git log` the source referenced by the doc since the doc's last modification; flag sections the code has outrun, with the commits that changed it.
+3. **Standards** — Diátaxis compliance (ONE purpose, matches its type), style guide adherence, structure vs the type's template.
+4. **Completeness** — missing template sections, broken internal links, missing prerequisites/troubleshooting/cross-references, outdated examples.
 
-2. **Freshness Agent**: Check `git log` for changes to the source code referenced by this doc since the doc was last modified. Identify any code changes that the doc doesn't reflect. Return list of potentially stale sections with the git commits that changed the underlying code.
+### Step 3: Filter & Fix
 
-3. **Standards Agent**: Check Diátaxis compliance (does it serve ONE purpose and match its type?), style guide adherence, structure quality against the template for its type. Return violations with specific locations.
-
-4. **Completeness Agent**: Check for missing sections expected by the Diátaxis template, broken internal links, missing prerequisites, missing troubleshooting, missing cross-references to related docs, outdated examples. Return gaps.
-
-### Step 3: Confidence Scoring
-
-For each issue from Step 2, use parallel Haiku agents to score 0-100 using the same rubric as autonomous mode.
-
-### Step 4: Filter & Fix
-
-- Discard issues scoring below 80
-- Use a Sonnet agent (the Historian) to fix high-confidence issues
+- Filter with the independent-reviewer test (see false-positive list below)
+- Use a Sonnet agent (the Historian) to fix surviving issues
 - Use a Sonnet agent (the Librarian) to re-verify the fixes are accurate (single verification pass)
 
-### Step 5: Report
+### Step 4: Report
 
 Output structured report:
-- Issues found (with confidence scores)
-- Issues fixed (with what changed)
+- Issues found and fixed (with what changed)
 - Issues requiring human judgment (if any)
 - Overall doc health assessment
 
 ---
 
-## False Positive Examples (provide to scoring agents)
+## False Positive Examples (provide to reviewers)
 
-These should score LOW (below 50):
+These do NOT survive the independent-reviewer test:
 - Doc style preferences not codified in the project style guide
 - Technically correct content worded differently than source comments
 - Missing docs for internal implementation details (not user-facing)
 - Minor formatting differences from template structure
 - Pre-existing issues that predate recent changes
 
-These should score HIGH (75-100):
+These are real issues — always report:
 - Commands in docs that would fail if run
 - Paths in docs that don't exist in the codebase
 - Config examples that don't match actual config files

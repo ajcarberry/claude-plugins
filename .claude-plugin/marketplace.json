@@ -1,20 +1,44 @@
 {
   "name": "personal-cc-plugins",
-  "description": "Development workflow plugins for Claude Code — documentation management and session lifecycle",
+  "description": "Development workflow plugins for Claude Code — session lifecycle with flight rules, documentation management, and domain packs",
   "owner": {
     "name": "Alex Carberry"
   },
   "plugins": [
     {
+      "name": "launchpad",
+      "description": "Session lifecycle and flight rules — /mission spec through /flight-plan, /launch execution, /orbit PR iteration, and /land deploy verification",
+      "source": "./plugins/launchpad",
+      "category": "productivity"
+    },
+    {
       "name": "docs",
-      "description": "Autonomous documentation management with multi-agent review",
+      "description": "Autonomous documentation management with risk-scaled review",
       "source": "./plugins/docs",
       "category": "productivity"
     },
     {
-      "name": "launchpad",
-      "description": "Session lifecycle — /stage creates workspaces, /flight-plan researches and plans, /land closes out with PR",
-      "source": "./plugins/launchpad",
+      "name": "launchpad-web",
+      "description": "Web domain pack — perf/a11y checks and web landing mechanics",
+      "source": "./plugins/launchpad-web",
+      "category": "productivity"
+    },
+    {
+      "name": "launchpad-electron",
+      "description": "Electron domain pack — process discipline and packaging/smoke-test landing mechanics",
+      "source": "./plugins/launchpad-electron",
+      "category": "productivity"
+    },
+    {
+      "name": "launchpad-infra",
+      "description": "Infrastructure domain pack — plan-before-apply and cluster landing mechanics with live failure injection",
+      "source": "./plugins/launchpad-infra",
+      "category": "productivity"
+    },
+    {
+      "name": "launchpad-tpm",
+      "description": "Technical product management pack — PRD/decision-doc authoring and stakeholder delivery",
+      "source": "./plugins/launchpad-tpm",
       "category": "productivity"
     }
   ]

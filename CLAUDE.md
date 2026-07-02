@@ -6,10 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Reusable Claude Code plugins that raise the quality and consistency of AI-assisted development projects. The core thesis: agent output quality is proportional to context quality, so these plugins encode proven patterns — research-plan-implement workflows, multi-agent review, structured requirements — as portable, shareable context that any project can adopt.
 
-Two plugins:
+Core plugins:
 
 - **Launchpad** (`plugins/launchpad/`) — Session lifecycle and flight rules, embodying a spec → plan → implement → review → verify workflow. Commands: `/mission`, `/stage`, `/flight-plan`, `/launch`, `/commit`, `/orbit`, `/land`, plus `/hop` (express lane) and `/status` (re-entry).
-- **Docs** (`plugins/docs/`) — Autonomous documentation management with multi-agent review. Command: `/docs`.
+- **Docs** (`plugins/docs/`) — Autonomous documentation management with risk-scaled review. Command: `/docs`.
+
+Domain packs (skills only, thin by design): `launchpad-web`, `launchpad-electron`, `launchpad-infra`, `launchpad-tpm` — each adds domain discipline plus the landing mechanics `/land` calls into. `global/` holds the ~40-line global CLAUDE.md and its installer; `pressure-tests/` holds scenarios for the Iron-Law skills. `SUPERPOWERS-DESIGN.md` is the system's design doc.
 
 ## Architecture
 
@@ -30,7 +32,7 @@ The top-level `.claude-plugin/marketplace.json` registers both plugins for disco
 
 ### Key Design Patterns
 
-**Risk-Scaled Review Pipeline** — Used by `/flight-plan`, `/commit`, and `/land`. Review depth follows the stakes rubric: low stakes get a light inline pass, standard work gets one strong reviewer covering all dimensions, high stakes (auth, payments, migrations, prod infra, destructive ops) get a parallel specialist panel. Concerns are filtered by the independent-reviewer test and classified as blocking or nit. (`/docs` still uses its own inline confidence-scoring pipeline — reconciliation is planned in Phase 6.)
+**Risk-Scaled Review Pipeline** — Used by `/flight-plan`, `/commit`, and `/land`. Review depth follows the stakes rubric: low stakes get a light inline pass, standard work gets one strong reviewer covering all dimensions, high stakes (auth, payments, migrations, prod infra, destructive ops) get a parallel specialist panel. Concerns are filtered by the independent-reviewer test and classified as blocking or nit. `/docs` follows the same pattern with its own review dimensions.
 
 **Requirements Traceability (R/S/V)** — Flight plans use EARS-pattern requirements (REQ-N), implementation steps (S-N), and verification checks (V-N). Every REQ must appear in at least one S and one V.
 
