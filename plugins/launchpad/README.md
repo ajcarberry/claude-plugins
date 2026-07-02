@@ -20,7 +20,7 @@ IDEA → /mission → /stage → /flight-plan → /launch → /orbit → /land �
 3. **`/flight-plan`** — Research and planning: plain-language plan with phases, checkpoints, and `[orbit]`/`[landing]`-tagged V-checks. EARS requirements opt-in for high stakes.
 4. **`/launch`** — Execute the plan phase by phase with a durable flight log; `/commit` at checkpoints; subagent orchestration (heavyweight mode) for big builds.
 5. **`/orbit`** — Push, PR, CI watch, review iteration, orbit V-checks — until go-for-landing.
-6. **`/land`** — Merge, deploy, observe, and run the landing V-checks against the live system (Phase 5 of the build — coming next).
+6. **`/land`** — Reentry and touchdown: go-for-landing gate, rollback path + backup, merge, deploy, observe, landing V-checks against the live system, abort-to-orbit on failure, cleanup.
 7. **`/hop`** — Express lane for small tasks; **`/status`** — read-only re-entry, any time.
 
 ## Commands
@@ -108,6 +108,15 @@ feedback until **go-for-landing**. Re-enterable anytime.
 /orbit                               # Derives PR title from context
 /orbit feat: add alerting rules      # Uses argument as PR title
 ```
+
+### `/land` — Reentry & Touchdown
+
+Runs only on GO from `/orbit`: verifies CI/reviews fresh, states the rollback path,
+backs up before anything destructive (typed confirmation for irreversible steps),
+merges, deploys (domain-pack mechanics → project deploy command → CI/CD watch),
+observes until stable, and executes the `[landing]` V-checks against the live system
+— including negative checks. Failure = **abort-to-orbit**: rollback, verify healthy,
+preserve the branch for another iteration. Touchdown = verified in reality.
 
 ## Skills
 

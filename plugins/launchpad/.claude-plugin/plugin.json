@@ -1,6 +1,6 @@
 {
   "name": "launchpad",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Session lifecycle and flight rules — from /mission spec through /flight-plan, /launch execution, /orbit PR iteration, and /land deploy verification; discipline skills enforce verification, failing-check-first, and root-cause debugging.",
   "author": {
     "name": "Alex Carberry"
