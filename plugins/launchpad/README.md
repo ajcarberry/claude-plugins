@@ -7,18 +7,21 @@ the way.
 ## Lifecycle
 
 ```
-IDEA → /mission → /stage → /flight-plan → [implement] → /land → …
-            │                             (/commit at checkpoints)
-            └─ small task? → /hop                 /status = re-entry, any time
+IDEA → /mission → /stage → /flight-plan → /launch → /orbit → /land → debrief*
+            │                            (/commit at  (push, PR,  (merge,
+            │                             checkpoints) CI, review  deploy,
+            │                                          iteration)  validate)
+            └─ small task? → /hop            /status = re-entry, any time
 ```
+\* `/debrief` is deferred — see SUPERPOWERS-DESIGN.md.
 
 1. **`/mission`** — Shape an idea into an approved spec (hard gate before implementation). Skippable for small/obvious work.
 2. **`/stage`** — Fast workspace setup (~15 seconds): worktree + branch + mission brief (linking the spec if one exists) + background baseline check.
-3. **`/flight-plan`** — Research and planning: verified flight plan with phases, checkpoints, and V-checks.
-4. **Implement** — using the mission brief and flight plan as context; `/commit` reviews and commits at checkpoints.
-5. **`/land`** — Close out: commits, docs check, push, CI status, PR.
-6. **`/hop`** — Express lane: mini-brief → failing check → implement → light review → commit → optional PR, in one command.
-7. **`/status`** — Read-only mission re-entry: where things stand, what's next, what's blocked.
+3. **`/flight-plan`** — Research and planning: plain-language plan with phases, checkpoints, and `[orbit]`/`[landing]`-tagged V-checks. EARS requirements opt-in for high stakes.
+4. **`/launch`** — Execute the plan phase by phase with a durable flight log; `/commit` at checkpoints; subagent orchestration (heavyweight mode) for big builds.
+5. **`/orbit`** — Push, PR, CI watch, review iteration, orbit V-checks — until go-for-landing.
+6. **`/land`** — Merge, deploy, observe, and run the landing V-checks against the live system (Phase 5 of the build — coming next).
+7. **`/hop`** — Express lane for small tasks; **`/status`** — read-only re-entry, any time.
 
 ## Commands
 
@@ -83,18 +86,28 @@ Reads the mission brief, researches the codebase, clarifies scope, and produces 
 
 **EARS Methodology:** Flight plans use structured requirement patterns (ubiquitous, event-driven, state-driven, unwanted behavior) with end-to-end traceability — every requirement (R) must appear in at least one implementation step (S) and one verification check (V).
 
-### `/land` — Close Out a Session
+### `/launch` — Execute the Flight Plan
 
-Commits outstanding work, checks documentation for drift, pushes the branch, checks CI status, and creates a pull request.
+Implements phase by phase with a durable `.claude/flight-log.md` (resumable after
+crashes or compaction), running `[orbit]` V-checks at checkpoints and `/commit` per
+phase, ending with a whole-branch review. Heavyweight mode (per-step subagents with
+two-stage review) for ~10+ step builds; solo mode for environments without subagents.
 
 ```bash
-/land                                # Derives PR title from context
-/land feat: add alerting rules       # Uses argument as PR title
+/launch            # Lean (default) — offers heavyweight when the plan is large
+/launch --heavy    # Per-step subagent orchestration
 ```
 
-**CI Status Check:** After pushing, `/land` checks CI status via `gh run list`. If CI is running, offers to wait. If CI failed, offers to proceed or abort. If `gh` is unavailable, skips with a note.
+### `/orbit` — PR, CI & Review Iteration
 
-**Verification Traceability:** If a flight plan exists with a Verification section, the PR test plan cross-references each V-check with pass/fail status.
+Runs orbit V-checks, checks docs drift, pushes, creates the PR (with `[landing]`
+checks published as `/land`'s work queue), watches CI, and iterates on review
+feedback until **go-for-landing**. Re-enterable anytime.
+
+```bash
+/orbit                               # Derives PR title from context
+/orbit feat: add alerting rules      # Uses argument as PR title
+```
 
 ## Skills
 
@@ -111,6 +124,9 @@ implementation work.
 | `test-driven-development` | Flight Rule: failing check first — a test where a harness exists, an observable command where it doesn't. Includes test-design and Go references (absorbs the former `write-tests`) | auto-invokes |
 | `systematic-debugging` | Flight Rule: root cause before remedy; 3-strikes rule. Includes root-cause-tracing, condition-based-waiting, defense-in-depth references | auto-invokes |
 | `browser-verified-web-work` | Flight Rule: web changes verified by loading the page — console checked, screenshot captured | auto-invokes |
+| `subagent-driven-development` | Heavyweight execution engine: fresh implementer per step, two-stage step review, file-based handoffs, model tiering | `/launch --heavy` |
+| `receiving-code-review` | Verify feedback before implementing; reasoned pushback; no performative agreement | `/orbit`, auto-invokes |
+| `data-safety` | Migrations up+down tested against a copy; backup gate before destructive operations | auto-invokes |
 
 ## Two Documents
 

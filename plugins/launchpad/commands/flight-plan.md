@@ -53,19 +53,23 @@ From the results, draft:
 - Candidate **Starting Points** (verified `path:line` references)
 - Open questions needing clarification
 
-### Step 2.5: Scope-Size Assessment
+### Step 2.5: Size & Stakes Assessment
 
-Before drafting, assess the task size from the research results:
+Before drafting, assess size and stakes (load `launchpad:stakes-rubric` if unsure):
 
-| Expected REQs | Size | Drafting Mode |
-|---------------|------|---------------|
-| 1-3 | Small | Use the **Small Task Format** from the requirements-authoring skill. Skip full REQ/S/V structure, phased steps, and traceability matrix. |
-| 3-7 | Standard | Full EARS requirements with phases and V-checks. |
+| Distinct changes | Size | Drafting Mode |
+|------------------|------|---------------|
+| 1-3 | Small | **Small Task Format** — Changes table + Verification list. (This size usually means `/hop` was the better entry; say so, but proceed.) |
+| 3-7 | Standard | **Plain plan** (default template below). |
 | 7+ | Large | Ask the user to split into separate deliverables before drafting. |
 
-To assess: count the distinct behavioral changes, new components, or integration points identified during research. Each maps roughly to one top-level requirement. Err toward "small" — if in doubt between small and standard, choose small.
+**EARS opt-in:** if the stakes tier is **high** (auth, payments, migrations, prod
+infra, destructive ops) or the user explicitly asks for formal requirements, add an
+EARS Requirements section — load `launchpad:requirements-authoring` for patterns and
+traceability. Otherwise skip formal requirements entirely; the plain plan's
+objective + V-checks carry the contract.
 
-If **small**: Step 4 uses the lightweight format (Changes table + Verification list). Steps 5 (Review) and 6 (Write) still apply but review scope is reduced.
+To assess size: count the distinct behavioral changes, new components, or integration points identified during research. Err toward "small" — if in doubt between small and standard, choose small.
 
 If **large**: Present the scope breakdown to the user via AskUserQuestion (header "Scope Too Large") with options: "Split now" (recommend how to divide, then re-run for the first deliverable), "Proceed anyway" (continue with standard treatment), "Cancel" (stop). Do **not** proceed to Step 3 until the user decides.
 
@@ -75,41 +79,36 @@ If genuine ambiguities remain, ask **one round** of questions (max 4 questions) 
 
 ### Step 4: Draft
 
-Load the `launchpad:requirements-authoring` skill using the Skill tool for EARS patterns, requirement structure, and traceability guidance.
-
 Assemble (fresh mode) or update (iterating mode) the flight plan. Do **not** write to disk yet. When mode is iterating, update only affected sections.
 
-**If scope-size is "small":** Use the Small Task Format from the requirements-authoring skill instead of the full template below. Skip the Requirements, Traceability, and Phased Steps sections — use the Changes table and Verification list directly.
+**If size is "small":** use the Small Task Format — a Changes table (file → what changes) and a numbered Verification list of copy-pasteable commands with expected results. Nothing else.
 
-**If scope-size is "standard"** (or "large" if user chose "Proceed anyway")**:** Follow the requirements-authoring skill for all requirement, step, and verification formatting. The template below defines the document structure; the skill defines content quality standards.
+**If EARS opt-in triggered** (high stakes or explicit request): load `launchpad:requirements-authoring` and insert a `## Requirements` section (EARS patterns, rationale, acceptance criteria, R/S/V traceability tags) between Objective and Starting Points. Otherwise omit it.
 
-**Template:**
+**Default template (plain plan):**
 
     ---
     mission: <task from mission brief, verbatim>
     branch: <branch>
     date: <today>
+    stakes: <low | standard | high>
     ---
 
     # Flight Plan
 
-    > **For the implementer:** This flight plan is designed for autonomous execution.
-    > Requirements define what must be true — not how to build it. V-checks are
-    > guardrails, not scripts. Work loop: implement a phase → verify against its
-    > checkpoint and V-checks → fix failures → proceed to next phase. If a V-check
-    > fails, investigate root cause before moving on.
+    > **For the implementer:** Designed for autonomous execution by someone with no
+    > session context. Work loop: implement a phase → verify its checkpoint and
+    > V-checks → fix failures at root cause → next phase.
 
     ## Objective
 
-    <detailed technical restatement — what's broken/missing, what "done" looks like>
+    <What's broken/missing, what "done" looks like — plain language, specific.
+     Pull success criteria from the linked spec if one exists.>
 
     ## Prerequisites
 
-    List external dependencies and preconditions per the requirements-authoring skill's Prerequisites format (dependency, type, status/verification).
-
-    ## Requirements
-
-    Expand the mission brief's Desired Outcome into 3-7 top-level requirements, each with 1-5 sub-requirements, using EARS patterns and RFC 2119 priority language (SHALL/SHOULD/MAY) from the loaded requirements-authoring skill. Every requirement must include a Rationale and Acceptance Criteria. At least one requirement must use the unwanted-behavior pattern (If...then) for error handling.
+    <External dependencies and preconditions, each with a verification command.
+     Omit the section if there are none.>
 
     ## Starting Points
 
@@ -117,7 +116,7 @@ Assemble (fresh mode) or update (iterating mode) the flight plan. Do **not** wri
 
     ## Scope & Decisions
 
-    <what's in, what's out, key architectural choices>
+    <what's in, what's out, key choices — the out-list prevents scope creep>
 
     ## Guardrails
 
@@ -125,24 +124,29 @@ Assemble (fresh mode) or update (iterating mode) the flight plan. Do **not** wri
 
     ## Plan of Attack
 
-    Group steps into phases per the requirements-authoring skill's Phased Steps format. Each phase produces a shippable, testable increment with a Checkpoint. Steps use S-prefix IDs with REQ traceability tags.
+    Phases, each producing a shippable, testable increment. Steps use S-prefix IDs.
+    **Steps must be executable by a fresh-context implementer:** exact file paths,
+    real function signatures, concrete commands — never "similar to S3" or "add
+    appropriate validation".
 
-    Each checkpoint must include a failure recovery hint:
-    ```
+    ### Phase 1: <name>
+    S1: <step>
+    S2: <step>
     **Checkpoint:** <what's verifiable after this phase>
-    If checkpoint fails: <what to investigate or fix before proceeding>
-    ```
-    The recovery hint tells the implementer where to look — not what to do. Example: "If checkpoint fails: check Consul service registration logs and verify the health check endpoint returns 200."
-
-    Apply the scope-size check: if the plan exceeds 7 top-level requirements, recommend splitting into separate deliverables.
-
-    **Traceability:** Every REQ must appear in at least one S. Every S must reference at least one REQ.
+    If checkpoint fails: <where to investigate — not what to do>
 
     ## Verification
 
-    Follow the requirements-authoring skill's verification format. Each check uses event-driven EARS phrasing and asserts observable behavior. Include both happy-path and negative/failure test cases. At least one negative V-check for every unwanted-behavior requirement.
+    Numbered V-checks asserting observable behavior — concrete command or observation
+    plus the expected result. Each check is tagged by when it can run:
 
-    **Traceability:** Every REQ must appear in at least one V. Every V must reference at least one REQ.
+    - `V1 [orbit]` — verifiable from the branch (tests, builds, local runs). Run by
+      /launch at checkpoints and /orbit before the PR.
+    - `V2 [landing]` — requires the live/deployed system (kill the container and
+      watch the alert; verify prod telemetry). Queued in the PR body for /land.
+
+    Include negative/failure cases, not just happy paths — at least one per
+    error-handling behavior the plan introduces.
 
 ### Step 5: Review
 
@@ -155,7 +159,7 @@ Define the peer-review pipeline parameters, then execute.
 
 | Dimension | Focus | Fresh Mode | Iterating Mode |
 |-------|-------|:-----:|:---------:|
-| #1 — Completeness | **Standard/large:** All affected files identified? Starting points verified? Guardrails sufficient? Are all requirements (REQ) traced to at least one step (S) and one verification check (V)? Do requirements include rationale and acceptance criteria? **Small:** All affected files listed in the Changes table? Every verification item concrete and copy-pasteable? | yes | yes |
+| #1 — Completeness | **Standard/large:** All affected files identified? Starting points verified? Guardrails sufficient? Every phase has a checkpoint; every V-check is concrete, tagged `[orbit]`/`[landing]`, and covers the objective? (If an EARS Requirements section exists: every REQ traced to at least one S and one V.) **Small:** All affected files listed in the Changes table? Every verification item concrete and copy-pasteable? | yes | yes |
 | #2 — Feasibility | Steps execute in order? Dependencies accounted for? Hidden complexities? Effort proportional? | yes | — |
 | #3 — Scope Alignment | Plan stays within mission brief? Over-engineering? Scope boundaries clear? | yes | yes |
 | #4 — Convention Compliance | Follows CLAUDE.md and .claude/rules/? Respects architectural constraints? Would pass `/commit-review`? | yes | — |
@@ -186,12 +190,12 @@ Print summary (use the variant matching the scope-size):
 
     Flight plan ready!
       Objective:       <1-line summary>
-      Requirements:    <N> top-level (REQ-1 to REQ-N) with sub-requirements
+      Stakes:          <low | standard | high — with EARS requirements if high>
       Starting points: <N> verified files
       Plan phases:     <N> phases, <M> steps (S1-SM)
-      Verification:    <N> checks (V1-VN) including <M> negative cases
+      Verification:    <N> checks (<X> [orbit], <Y> [landing]) incl. <M> negative cases
       The flight plan is at .claude/flight-plan.md
-      Start implementing — or review the plan first.
+      Run /launch to execute — or review the plan first.
 
 **Small:**
 
@@ -200,9 +204,9 @@ Print summary (use the variant matching the scope-size):
       Files affected:  <N> files
       Verification:    <N> checks
       The flight plan is at .claude/flight-plan.md
-      Start implementing — or review the plan first.
+      Run /launch to execute — or review the plan first.
 
-**STOP.** Do not begin implementation.
+**STOP.** Do not begin implementation — that's `/launch`.
 
 ## Error Handling
 

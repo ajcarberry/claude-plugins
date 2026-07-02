@@ -8,7 +8,7 @@ Reusable Claude Code plugins that raise the quality and consistency of AI-assist
 
 Two plugins:
 
-- **Launchpad** (`plugins/launchpad/`) — Session lifecycle from workspace setup through PR creation, embodying a research → plan → implement → review workflow. Commands: `/stage`, `/flight-plan`, `/commit`, `/land`.
+- **Launchpad** (`plugins/launchpad/`) — Session lifecycle and flight rules, embodying a spec → plan → implement → review → verify workflow. Commands: `/mission`, `/stage`, `/flight-plan`, `/launch`, `/commit`, `/orbit`, `/land` (Phase 5), plus `/hop` (express lane) and `/status` (re-entry).
 - **Docs** (`plugins/docs/`) — Autonomous documentation management with multi-agent review. Command: `/docs`.
 
 ## Architecture
