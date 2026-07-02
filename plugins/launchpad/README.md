@@ -44,7 +44,7 @@ Reads the mission brief, researches the codebase, clarifies scope, and produces 
 2. Parallel codebase research via Explore agents
 3. Clarify scope with user (max 4 questions, skipped if unambiguous)
 4. Draft flight plan with EARS requirements (R), implementation steps (S), and verification checks (V)
-5. Multi-agent architecture review with confidence scoring (includes traceability check)
+5. Risk-scaled peer review — single reviewer by default, specialist panel for high-stakes plans (includes traceability check)
 6. Write finalized plan to `.claude/flight-plan.md`
 
 **EARS Methodology:** Flight plans use structured requirement patterns (ubiquitous, event-driven, state-driven, unwanted behavior) with end-to-end traceability — every requirement (R) must appear in at least one implementation step (S) and one verification check (V).
@@ -62,17 +62,21 @@ Commits outstanding work, checks documentation for drift, pushes the branch, che
 
 **Verification Traceability:** If a flight plan exists with a Verification section, the PR test plan cross-references each V-check with pass/fail status.
 
-## Knowledge Skills
+## Skills
 
-Commands delegate domain knowledge to background skills that provide templates, rubrics, and guidance.
+Two kinds: **pipeline skills** that commands load at fixed workflow points, and
+**Flight Rules** — discipline skills that auto-invoke on their descriptions during
+implementation work.
 
 | Skill | Purpose | Used by |
 |-------|---------|---------|
-| `peer-review` | Scoring rubric and review pipeline for multi-agent review | `/flight-plan` |
-| `requirements-authoring` | EARS patterns, RFC 2119 priorities, sub-requirement hierarchies, R/S/V traceability, phased steps, and verification guidelines | `/flight-plan` |
-| `write-tests` | Testing Trophy model, behavior-first test patterns, and mocking guidelines | User-invocable (`/write-tests`) |
-
-`peer-review` and `requirements-authoring` are command-internal — loaded automatically by `/flight-plan`. `write-tests` is user-invocable.
+| `peer-review` | Risk-scaled review pipeline — single reviewer by default, specialist panel for high stakes, independent-reviewer concern filter | `/flight-plan`, `/commit` |
+| `requirements-authoring` | EARS patterns, RFC 2119 priorities, R/S/V traceability, phased steps, verification guidelines | `/flight-plan` |
+| `stakes-rubric` | Shared risk tiers (low/standard/high) that size review depth, gates, and plan format | all commands |
+| `verification-before-completion` | Flight Rule: no completion claim without fresh verification evidence | auto-invokes |
+| `test-driven-development` | Flight Rule: failing check first — a test where a harness exists, an observable command where it doesn't. Includes test-design and Go references (absorbs the former `write-tests`) | auto-invokes |
+| `systematic-debugging` | Flight Rule: root cause before remedy; 3-strikes rule. Includes root-cause-tracing, condition-based-waiting, defense-in-depth references | auto-invokes |
+| `browser-verified-web-work` | Flight Rule: web changes verified by loading the page — console checked, screenshot captured | auto-invokes |
 
 ## Two Documents
 
@@ -111,11 +115,13 @@ Body contains: Objective, Prerequisites, Requirements (REQ-1 to REQ-N with sub-r
 
 ## Hook: SessionStart
 
-When Claude starts in a worktree that contains `.claude/mission-brief.md`, the SessionStart hook:
+Fires on session start, after `/clear`, and after context compaction — so the
+methodology survives context loss. It:
 
-1. **Loads context** — reads the mission brief and flight plan (if present) into session context
-2. **Detects mismatches** — branch drift (via YAML frontmatter `branch:` field), stale brief, dirty working tree
-3. **Background env init** — if the worktree is fresh (missing CLI binary or .venv), runs `go build` and `uv sync` in the background
+1. **Injects the flight-rules bootstrap** (always, even with no mission in progress) — a short policy block directing Claude to check for an applicable skill before implementation work
+2. **Loads mission context** — mission brief, latest approved spec (`.claude/specs/`), flight plan, and flight log (`.claude/flight-log.md`) when present; a flight log triggers resume-from-last-entry behavior
+3. **Detects mismatches** — branch drift (via YAML frontmatter `branch:` field), stale brief, dirty working tree
+4. **Background env init** — if the worktree is fresh (missing CLI binary or .venv), runs `go build` and `uv sync` in the background
 
 ## Prerequisites
 

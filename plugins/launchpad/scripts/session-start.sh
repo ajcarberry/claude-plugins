@@ -3,8 +3,33 @@ INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd')
 MISSION_BRIEF="$CWD/.claude/mission-brief.md"
 FLIGHT_PLAN="$CWD/.claude/flight-plan.md"
+FLIGHT_LOG="$CWD/.claude/flight-log.md"
+SPECS_DIR="$CWD/.claude/specs"
 
+# --- Flight-rules bootstrap: always injected (survives /clear and compaction) ---
+BOOTSTRAP="# Flight Rules
+
+Launchpad flight rules are in effect. Before any implementation work — writing code,
+fixing a bug, changing config — check whether a launchpad skill applies and use it,
+announcing which one (\"Using test-driven-development: ...\"). Non-negotiable rules:
+no completion claim without fresh verification evidence; no production change without
+a check that fails first; no bug fix without a stated root cause; web changes are
+verified in a browser. Process rules take priority over implementation momentum.
+Priority order: explicit user instructions > flight rules > default behavior. Size
+ceremony with the stakes-rubric skill — low-stakes work gets a light touch."
+
+emit_context() {
+  jq -n --arg content "$1" '{
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: $content
+    }
+  }'
+}
+
+# No mission in progress — inject the bootstrap alone.
 if [ ! -f "$MISSION_BRIEF" ]; then
+  emit_context "$BOOTSTRAP"
   exit 0
 fi
 
@@ -105,8 +130,11 @@ ${BG_MSG}
 "
 fi
 
-# Tailor closing instructions based on whether a flight plan exists
-if [ -f "$FLIGHT_PLAN" ]; then
+# Tailor closing instructions based on mission state
+if [ -f "$FLIGHT_LOG" ]; then
+  PREAMBLE="${PREAMBLE}
+A flight log is loaded below — resume from its last entry rather than re-planning or re-exploring."
+elif [ -f "$FLIGHT_PLAN" ]; then
   PREAMBLE="${PREAMBLE}
 A flight plan is loaded below. Orient to it and start implementing — no need to re-explore the codebase."
 else
@@ -114,25 +142,41 @@ else
 Then proceed to explore the codebase and present your plan of attack."
 fi
 
-# --- Assemble context from both documents ---
-CONTEXT="${PREAMBLE}
+# --- Assemble context ---
+CONTEXT="${BOOTSTRAP}
+
+${PREAMBLE}
 
 # Mission Brief
 
 ${BRIEF_CONTENT}"
 
+# Latest approved spec, if any (mission brief's parent design doc)
+if [ -d "$SPECS_DIR" ]; then
+  LATEST_SPEC=$(ls -1 "$SPECS_DIR"/*.md 2>/dev/null | sort | tail -1)
+  if [ -n "$LATEST_SPEC" ]; then
+    CONTEXT="${CONTEXT}
+
+# Approved Spec ($(basename "$LATEST_SPEC"))
+
+$(cat "$LATEST_SPEC")"
+  fi
+fi
+
 if [ -f "$FLIGHT_PLAN" ]; then
-  PLAN_CONTENT=$(cat "$FLIGHT_PLAN")
   CONTEXT="${CONTEXT}
 
 # Flight Plan
 
-${PLAN_CONTENT}"
+$(cat "$FLIGHT_PLAN")"
 fi
 
-jq -n --arg content "$CONTEXT" '{
-  hookSpecificOutput: {
-    hookEventName: "SessionStart",
-    additionalContext: $content
-  }
-}'
+if [ -f "$FLIGHT_LOG" ]; then
+  CONTEXT="${CONTEXT}
+
+# Flight Log
+
+$(cat "$FLIGHT_LOG")"
+fi
+
+emit_context "$CONTEXT"

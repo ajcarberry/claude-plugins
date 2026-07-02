@@ -1,5 +1,5 @@
 ---
-description: Review staged changes with parallel agents and confidence scoring, then commit if approved
+description: Review staged changes with risk-scaled peer review, then commit if approved
 allowed-tools: Bash, Read, Glob, Grep, Task, Skill, AskUserQuestion
 ---
 
@@ -52,9 +52,12 @@ If no validation commands were discovered, skip this step — proceed directly t
 
 Load the `launchpad:peer-review` skill using the Skill tool, then execute its pipeline with these parameters:
 
-**Agent count and focus areas:** 4 parallel Sonnet agents.
+**Review depth** (per the peer-review skill's stakes rubric):
+- **Low stakes** (docs, comments, cosmetic) — skip dispatched review; one inline pass.
+- **Standard** (default) — **one strong reviewer** covering all four dimensions below as sections of a single prompt.
+- **High stakes** (auth, payments, secrets, migrations, prod infra, destructive ops, very large diffs) — 4 parallel specialist agents, one per dimension.
 
-| Agent | Focus |
+| Dimension | Focus |
 |-------|-------|
 | #1 — Rules Compliance | Audit changes against CLAUDE.md and any project rule files (`.claude/rules/`) discovered in Step 2. Only flag violations that are clearly relevant to the actual changes being reviewed — project rules guide code generation, so not every rule applies during review. |
 | #2 — Bug & Regression Detection | Scan the staged diff for functional bugs. Focus on impactful issues: logic errors, incorrect conditions, missing error handling that will cause failures. Read surrounding files (handlers, related task files, referenced modules) to verify concerns and catch regressions against established patterns. |
@@ -73,7 +76,7 @@ Load the `launchpad:peer-review` skill using the Skill tool, then execute its pi
 **The false positive test:** Would a different qualified reviewer, given this same diff and these same project rules, independently flag the same issue? If not, it's likely a false positive.
 
 **Resolution logic:**
-- **Blocking concerns** → report each with `file:line` reference and confidence score. Prefix non-blocking items with "Nit:". **DO NOT** proceed to Step 5. **DO NOT** propose a commit message.
+- **Blocking concerns** → report each with `file:line` reference and the reviewing dimension. Prefix non-blocking items with "Nit:". **DO NOT** proceed to Step 5. **DO NOT** propose a commit message.
 - **Only nits** → list nits briefly in the review summary, proceed to Step 5.
 - **Clean** (no concerns survive filtering) → proceed to Step 5.
 

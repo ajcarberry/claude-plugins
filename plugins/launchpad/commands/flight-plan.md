@@ -148,9 +148,12 @@ Assemble (fresh mode) or update (iterating mode) the flight plan. Do **not** wri
 
 Define the peer-review pipeline parameters, then execute.
 
-**Agent count and focus areas:** 4 parallel Sonnet agents (reduce to 2 — #1 and #3 — for small-scope plans).
+**Review depth** (per the peer-review skill's stakes rubric):
+- **Small-scope plans** — one lightweight reviewer covering dimensions #1 and #3 only.
+- **Standard** (default) — **one strong reviewer** covering the applicable dimensions below as sections of a single prompt.
+- **High stakes** (plan touches auth, payments, migrations, prod infra, or destructive ops) — parallel specialist agents, one per applicable dimension.
 
-| Agent | Focus | Fresh Mode | Iterating Mode |
+| Dimension | Focus | Fresh Mode | Iterating Mode |
 |-------|-------|:-----:|:---------:|
 | #1 — Completeness | **Standard/large:** All affected files identified? Starting points verified? Guardrails sufficient? Are all requirements (REQ) traced to at least one step (S) and one verification check (V)? Do requirements include rationale and acceptance criteria? **Small:** All affected files listed in the Changes table? Every verification item concrete and copy-pasteable? | yes | yes |
 | #2 — Feasibility | Steps execute in order? Dependencies accounted for? Hidden complexities? Effort proportional? | yes | — |
@@ -166,7 +169,7 @@ Define the peer-review pipeline parameters, then execute.
 - Concerns already covered by another agent's dimension
 
 **Resolution logic:**
-- **Blocking concerns** → present each to user with agent source + score → ask to revise or accept as-is. Always offer "Accept as-is."
+- **Blocking concerns** → present each to user with the reviewing dimension → ask to revise or accept as-is. Always offer "Accept as-is."
 - **Only nits** → mention briefly, proceed to Step 6
 - **Clean** (no concerns survive filtering) → proceed to Step 6
 - If user requests revisions, update the draft and re-run the pipeline. **Max 2 revision cycles** — then proceed as-is.

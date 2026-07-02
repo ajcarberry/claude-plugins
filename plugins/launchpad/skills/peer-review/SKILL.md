@@ -1,47 +1,55 @@
 ---
 name: peer-review
-description: This skill should be used when running a "multi-agent review", "peer review", "confidence scoring", or "parallel specialist review" pipeline. Provides the scoring rubric, review pipeline pattern, false positive filtering, and classification rules for reviewing any artifact (flight plans, commits, documents) with parallel agents and confidence-based concern filtering.
+description: Use when running a "peer review", "multi-agent review", or review pipeline over any artifact — a diff, flight plan, or document — and when deciding how many reviewers a change needs or filtering review concerns before presenting them.
 ---
 
-# Peer Review
+# Peer Review — Risk-Scaled Review Pipeline
+
+Review depth follows the [stakes rubric](../stakes-rubric/SKILL.md), not a fixed
+agent count.
 
 ## Pipeline
 
-A reusable pattern for parallel specialist review with confidence-based filtering.
+1. **Classify stakes** — low / standard / high per the stakes rubric.
 
-1. **Specialist review** — launch N parallel agents, each focused on a distinct review dimension. Each agent receives the artifact(s) under review and returns a list of concerns with reasoning. Agents must verify concerns against the broader codebase — read surrounding files, check that referenced functions/handlers/configs exist, and confirm assumptions before reporting. A concern the agent could have verified but didn't is the agent's failure, not a property of the concern.
+2. **Review**
+   - **Low** → no dispatched reviewer, or one lightweight pass inline. Move on.
+   - **Standard** → **one strong reviewer** (single agent, capable model). The
+     consumer's review dimensions (rules compliance, bugs, design, security, …)
+     become sections of this one reviewer's prompt — including the two-stage verdict
+     where a plan/spec exists: (a) does the work comply with the plan, (b) is the
+     work itself sound.
+   - **High** → a **panel** of 2–4 specialist agents, one per dimension, as defined
+     by the consumer.
 
-2. **Confidence scoring** — for each concern, launch a parallel Haiku agent (via Task tool with `subagent_type: "general-purpose"` and `model: "haiku"`) that scores it using the [scoring rubric](references/scoring-rubric.md).
+3. **Verify** — reviewers must verify concerns against the codebase before reporting:
+   read surrounding files, confirm referenced functions/configs exist. An unverified
+   concern the reviewer could have verified is the reviewer's failure.
 
-3. **Filter** — discard concerns scoring below the threshold (default: 80).
+4. **Filter — the independent-reviewer test.** For each concern: *would a different
+   qualified reviewer, given the same artifact and the same project rules,
+   independently flag this?* If not, drop it. No scoring agents, no numeric
+   thresholds — this one question does the work.
 
-4. **Classify** — surviving concerns are either **blocking** (must resolve) or **non-blocking (nit)** (optional). See the [scoring rubric](references/scoring-rubric.md) for classification guidance.
+5. **Classify** — surviving concerns are **blocking** (would cause incorrect
+   behavior, data loss, a security issue, or violates an explicit project rule) or
+   **nit** (everything else worth a mention, prefixed "Nit:").
 
-### Consumer Responsibilities
-
-Each skill or command that uses this pipeline defines:
-
-- **Agent count and focus areas** — how many specialists and what each reviews
-- **Artifact format** — what the agents receive (diff, plan, document, etc.)
-- **Domain-specific false positives** — appended to the generic list from the peer-review skill
-- **Resolution logic** — what happens when blocking concerns are found (ask user, auto-fix, stop, etc.)
-
-## Scoring
-
-Read [scoring-rubric.md](references/scoring-rubric.md) and give it to each scoring agent verbatim.
-
-## False Positives
-
-These domain-general patterns typically score 0-50 and should not survive filtering:
+## Generic False Positives (drop on sight)
 
 - Pre-existing issues in unchanged code or artifacts
 - Stylistic preferences not codified in project rules
-- Issues a linter, typechecker, or validation gate would catch
-- Speculative concerns that can't be verified, even after reviewing source
-- Technically correct content worded differently than the reviewer prefers
+- Issues a linter, typechecker, or validation gate already catches
+- Speculative concerns that couldn't be verified against source
+- Correct content worded differently than the reviewer prefers
+- Scope the artifact intentionally defers or the brief didn't ask for
 
-Each consumer of this skill should append **domain-specific** false positive examples relevant to their review context.
+## Consumer Responsibilities
 
-## Classification
+Each command or skill using this pipeline defines:
 
-See the [scoring rubric](references/scoring-rubric.md) for how surviving concerns are classified as blocking or non-blocking (nit).
+- **Review dimensions** — what the reviewer(s) cover (sections for the single
+  reviewer; one agent each on a high-stakes panel)
+- **Artifact format** — what reviewers receive (diff, plan, document, context)
+- **Domain-specific false positives** — appended to the generic list
+- **Resolution logic** — what happens on blocking concerns (ask user, fix, stop)
