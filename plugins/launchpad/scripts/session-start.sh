@@ -69,39 +69,15 @@ if [ -n "$DIRTY" ]; then
   WARNINGS="${WARNINGS}WARNING: There are uncommitted changes in this worktree. Review them before making new changes.\n"
 fi
 
-# --- Fresh worktree detection: background env init ---
-NEEDS_BUILD=""
-NEEDS_SYNC=""
+# --- Project-defined environment init (background) ---
+# Projects opt in by providing an executable .claude/session-init.sh — worktree
+# builds, dependency syncs, whatever the project needs. Output is discarded.
 BG_MSG=""
+INIT_SCRIPT="$CWD/.claude/session-init.sh"
 
-if [ ! -f "$CWD/cluster" ]; then
-  NEEDS_BUILD=true
-fi
-
-if [ ! -d "$CWD/.venv" ]; then
-  NEEDS_SYNC=true
-fi
-
-if [ -n "$NEEDS_BUILD" ] || [ -n "$NEEDS_SYNC" ]; then
-  TASKS=""
-  if [ -n "$NEEDS_BUILD" ]; then
-    TASKS="CLI build"
-  fi
-  if [ -n "$NEEDS_SYNC" ]; then
-    [ -n "$TASKS" ] && TASKS="$TASKS + "
-    TASKS="${TASKS}Python sync"
-  fi
-  BG_MSG="Fresh worktree detected — ${TASKS} running in background."
-
-  # Run env init in background
-  (
-    if [ -n "$NEEDS_BUILD" ]; then
-      cd "$CWD/tools/cluster" && go build -o ../../cluster ./cmd/cluster 2>/dev/null
-    fi
-    if [ -n "$NEEDS_SYNC" ]; then
-      cd "$CWD" && uv sync 2>/dev/null
-    fi
-  ) &
+if [ -x "$INIT_SCRIPT" ]; then
+  BG_MSG="Project session-init.sh running in background."
+  ( cd "$CWD" && "$INIT_SCRIPT" >/dev/null 2>&1 ) &
 fi
 
 # --- Build additionalContext ---

@@ -1,19 +1,53 @@
 # Launchpad Plugin
 
-Session lifecycle management — `/stage` creates workspaces, `/flight-plan` researches and plans, `/land` closes out with PR.
+Session lifecycle and flight rules — from idea to verified landing, with discipline
+skills enforcing verification, failing-check-first, and root-cause debugging along
+the way.
 
 ## Lifecycle
 
 ```
-/stage  →  /flight-plan (optional)  →  [work]  →  /land
+IDEA → /mission → /stage → /flight-plan → [implement] → /land → …
+            │                             (/commit at checkpoints)
+            └─ small task? → /hop                 /status = re-entry, any time
 ```
 
-1. **`/stage`** — Fast workspace setup (~15 seconds). Creates a worktree + branch and writes a minimal mission brief with YAML frontmatter.
-2. **`/flight-plan`** — Research and planning. Reads the mission brief, explores the codebase, clarifies scope, and produces a verified flight plan using EARS methodology with R/S/V traceability.
-3. **Work** — Implement using the mission brief and flight plan as context.
-4. **`/land`** — Close out. Commits, checks docs, pushes, checks CI status, and creates a PR with verification traceability.
+1. **`/mission`** — Shape an idea into an approved spec (hard gate before implementation). Skippable for small/obvious work.
+2. **`/stage`** — Fast workspace setup (~15 seconds): worktree + branch + mission brief (linking the spec if one exists) + background baseline check.
+3. **`/flight-plan`** — Research and planning: verified flight plan with phases, checkpoints, and V-checks.
+4. **Implement** — using the mission brief and flight plan as context; `/commit` reviews and commits at checkpoints.
+5. **`/land`** — Close out: commits, docs check, push, CI status, PR.
+6. **`/hop`** — Express lane: mini-brief → failing check → implement → light review → commit → optional PR, in one command.
+7. **`/status`** — Read-only mission re-entry: where things stand, what's next, what's blocked.
 
 ## Commands
+
+### `/mission` — Idea to Approved Spec
+
+Clarifying questions (batched, multiple-choice preferred), 2-3 approaches with
+trade-offs, and a spec written to `.claude/specs/` — with a hard gate: no
+implementation until the spec is approved. Ceremony scales with stakes.
+
+```bash
+/mission                                    # Interactive
+/mission migrate auth to passkeys           # Direct
+```
+
+### `/hop` — Express Lane
+
+Small tasks (1-3 changes) in one command: inline mini-brief, observable checks that
+fail first, light review, commit, optional PR. Refuses high-stakes work; escalates to
+the full sequence if scope grows.
+
+```bash
+/hop fix the footer link color
+```
+
+### `/status` — Mission Re-Entry
+
+Read-only report from the mission brief, spec, flight plan, flight log, git, and
+GitHub state: current phase, what's done, what's next, what's blocked. Ends with one
+suggested next action.
 
 ### `/stage` — Fast Workspace Setup
 
@@ -121,15 +155,14 @@ methodology survives context loss. It:
 1. **Injects the flight-rules bootstrap** (always, even with no mission in progress) — a short policy block directing Claude to check for an applicable skill before implementation work
 2. **Loads mission context** — mission brief, latest approved spec (`.claude/specs/`), flight plan, and flight log (`.claude/flight-log.md`) when present; a flight log triggers resume-from-last-entry behavior
 3. **Detects mismatches** — branch drift (via YAML frontmatter `branch:` field), stale brief, dirty working tree
-4. **Background env init** — if the worktree is fresh (missing CLI binary or .venv), runs `go build` and `uv sync` in the background
+4. **Background env init** — if the project provides an executable `.claude/session-init.sh` (worktree builds, dependency syncs — whatever the project needs), runs it in the background
 
 ## Prerequisites
 
 - **git** — worktree and branch operations
-- **Go 1.23+** — CLI build in fresh worktrees (background)
-- **uv** — Python dependency sync (background)
 - **VS Code** — opened automatically by `/stage` (falls back to `code` CLI, then manual)
-- **gh** (GitHub CLI) — PR creation and CI status checking in `/land`
+- **gh** (GitHub CLI) — PR creation and CI status checking
+- Optional: an executable `.claude/session-init.sh` in your project for background environment init in fresh worktrees
 
 ## Extending
 

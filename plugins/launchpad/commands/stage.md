@@ -138,12 +138,18 @@ If reusing an existing worktree, skip this step entirely.
 
 ### Step 4: Write Mission Brief
 
+**Spec detection:** Glob `.claude/specs/*.md` in the current directory. If any exist,
+take the most recently modified one; if its frontmatter says `status: approved`, link
+it — copy it to `<worktree-path>/.claude/specs/` and add a `spec:` field to the brief
+frontmatter. If the latest spec is not approved or clearly unrelated to this task,
+skip linking silently.
+
 Use Bash tool to ensure the `.claude/` directory exists in the worktree (fresh worktrees won't have it):
 ```
 mkdir -p <worktree-path>/.claude
 ```
 
-Write the completed mission brief to `<worktree-path>/.claude/mission-brief.md` using this template:
+Write the completed mission brief to `<worktree-path>/.claude/mission-brief.md` using this template (omit the `spec:` line when no spec was linked):
 
 ```
 ---
@@ -151,6 +157,7 @@ task: <task>
 branch: <branch>
 date: <date>
 parent: <base-branch>
+spec: .claude/specs/<spec-file>
 ---
 
 # Mission Brief
@@ -167,6 +174,20 @@ parent: <base-branch>
 - **parent** — `<base-branch>` (the branch selected as the base)
 - **Desired Outcome** — 1-3 sentences describing a measurable end state. Restate the user's intent as a completed condition, not an action. If the task reads as an action ("Add Prometheus alerting"), rewrite it as "Prometheus alerting rules are added and deployed." Stay as close to the user's words as possible — do not invent scope, add assumptions, or include implementation details. A terse input ("fix caddy routing") gets a single terse outcome sentence ("Caddy routing is fixed and requests are handled correctly.").
 
+### Step 4.5: Baseline Check (background, non-blocking)
+
+Detect the project's test command, checking in order: a validation command named in
+CLAUDE.md, a `test` target in Makefile, `scripts.test` in package.json, `go test ./...`
+if go.mod exists, `pytest` if a pytest config exists. Take the first match only.
+
+If found, run it **in the background** in the new worktree (Bash `run_in_background`).
+Do not wait for it. Note in the summary that the baseline check is running — its
+result will surface when it completes. A failing baseline means the branch started
+broken; the session in the new worktree should know before claiming any test failures
+as its own.
+
+If no test command is found, skip silently.
+
 ### Step 5: Open VS Code + Summary + STOP
 
 Use Bash tool to open VS Code at the worktree path (non-fatal if it fails). Try each method in order — if the exit code is non-zero, try the next:
@@ -182,6 +203,8 @@ Session staged!
 
   Branch:    <branch-name>
   Worktree:  <worktree-path>
+  Spec:      <linked spec file | none>
+  Baseline:  <running in background | no test command found>
 
   Run `/flight-plan` in the new session to research and plan.
   Or just start working — the mission brief will load automatically.
