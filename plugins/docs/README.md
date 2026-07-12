@@ -1,48 +1,36 @@
-# Docs Plugin
+# Docs
 
-Autonomous documentation management for the homelab monorepo.
+Documentation as a first-class capability: one command, one skill, a default style
+that defers to the project's own.
 
-## Components
+## Command
 
-### Agents
-
-**Librarian** — Owns project documentation. Detects drift, enforces standards, delegates writing to the Historian. Triggers proactively after significant code changes.
-
-**Historian** — Technical writer. Creates and updates documentation following Diátaxis framework. Concise, accurate, clear. Triggers when docs need writing or updating.
-
-### Command
-
-**`/docs`** — Autonomous documentation workflow:
-- No arguments: detect gaps → write/update → review → fix → finalize
-- `review <path>`: focused panel scrutiny of specific docs against codebase accuracy
-
-### Skill
-
-**documentation-standards** — Diátaxis framework reference, templates, style guide, and quality criteria. Auto-activates when working with documentation.
-
-## Usage
+**`/docs`** — autonomous documentation pass:
+- No arguments: detect gaps from recent changes → write/update → review → fix →
+  report
+- `review <path>`: focused panel scrutiny of specific docs against codebase
+  accuracy, freshness, standards, and completeness
 
 ```bash
-# Full autonomous pass — detect and fix all documentation issues
 /docs
-
-# Review specific doc(s) for accuracy
 /docs review docs/reference/cli.md
-/docs review docs/guides/
 ```
 
-## How It Works
+## Skill
 
-The `/docs` command uses risk-scaled review (same pattern as launchpad's peer-review skill):
+**`writing-docs`** — the skill `/docs` and launchpad's `/launch` invoke:
+- **Override convention:** a project `writing-docs` skill or `docs/STYLE.md`
+  supersedes the plugin defaults entirely
+- Diátaxis type decision (tutorial / how-to / reference / ADR), one purpose per doc
+- Default style guide and quality bar: every command, path, and example verified
+  against the actual codebase
+- Templates: `templates/{tutorial,how-to,reference,adr}.md`
 
-1. **Triage** — Scan recent git changes
-2. **Gap analysis** — Librarian identifies what's missing or stale
-3. **Resolve** — Historian writes or updates docs
-4. **Review** — One reviewer covering accuracy, standards, and completeness (parallel reviewers for 3+ docs; a panel in `review <path>` mode)
-5. **Filter** — The independent-reviewer test drops anything another qualified reviewer wouldn't flag
-6. **Fix** — Historian addresses surviving issues
-7. **Finalize** — Report what was created/updated
+## Principles
 
-## Documentation Structure
-
-See [Diataxis framework reference](skills/documentation-standards/reference/diataxis-framework.md) for document types, decision tree, and type characteristics.
+- Model-tiered subagents: cheap models scan, standard models write, reviewers
+  verify claims against source before reporting.
+- The independent-reviewer test filters review noise; "nothing to update" is a
+  normal, correct outcome.
+- Docs never claim what the code doesn't do — accuracy issues always carry
+  evidence (what the doc says vs. what the code shows).

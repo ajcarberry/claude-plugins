@@ -1,0 +1,8 @@
+{
+  "name": "commit",
+  "version": "1.0.0",
+  "description": "Commit quality — /commit stages related changes together, writes messages in the project's own convention (documented → inferred from git log → default), never pushes unasked.",
+  "author": {
+    "name": "Alex Carberry"
+  }
+}

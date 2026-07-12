@@ -1,44 +1,32 @@
 {
   "name": "personal-cc-plugins",
-  "description": "Development workflow plugins for Claude Code — session lifecycle with flight rules, documentation management, and domain packs",
+  "description": "Development and product workflow plugins for Claude Code — dev lifecycle (launchpad), product lifecycle (tpm), documentation (docs), and commit quality (commit)",
   "owner": {
     "name": "Alex Carberry"
   },
   "plugins": [
     {
       "name": "launchpad",
-      "description": "Session lifecycle and flight rules — /mission spec through /flight-plan, /launch execution, /orbit PR iteration, and /land deploy verification",
+      "description": "Dev lifecycle — /stage, /mission-plan, /launch, /orbit, /land; Iron-Law flight rules and hook-enforced validation stamp",
       "source": "./plugins/launchpad",
       "category": "productivity"
     },
     {
+      "name": "tpm",
+      "description": "Product lifecycle — /feedback, /triage, /roadmap, /spec, /comms for TPMs and OSS maintainers",
+      "source": "./plugins/tpm",
+      "category": "productivity"
+    },
+    {
       "name": "docs",
-      "description": "Autonomous documentation management with risk-scaled review",
+      "description": "Documentation management — /docs plus the writing-docs skill with project style override",
       "source": "./plugins/docs",
       "category": "productivity"
     },
     {
-      "name": "launchpad-web",
-      "description": "Web domain pack — perf/a11y checks and web landing mechanics",
-      "source": "./plugins/launchpad-web",
-      "category": "productivity"
-    },
-    {
-      "name": "launchpad-electron",
-      "description": "Electron domain pack — process discipline and packaging/smoke-test landing mechanics",
-      "source": "./plugins/launchpad-electron",
-      "category": "productivity"
-    },
-    {
-      "name": "launchpad-infra",
-      "description": "Infrastructure domain pack — plan-before-apply and cluster landing mechanics with live failure injection",
-      "source": "./plugins/launchpad-infra",
-      "category": "productivity"
-    },
-    {
-      "name": "launchpad-tpm",
-      "description": "Technical product management pack — PRD/decision-doc authoring and stakeholder delivery",
-      "source": "./plugins/launchpad-tpm",
+      "name": "commit",
+      "description": "Commit quality — intelligent staging and project-convention messages; never pushes unasked",
+      "source": "./plugins/commit",
       "category": "productivity"
     }
   ]

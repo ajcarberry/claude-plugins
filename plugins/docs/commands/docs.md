@@ -22,12 +22,12 @@ Use a Haiku agent to scan recent changes and doc state:
 - Run `git log --oneline -20 --no-merges` to see recent code changes
 - Run `git diff --name-only HEAD~10 2>/dev/null || git diff --name-only HEAD~5` to see changed files
 - List existing docs and their topics in `docs/`
-- Identify which code areas changed (ansible, nomad, terraform, tools, docs)
+- Identify which project areas changed
 - Return: list of changed areas and brief summary
 
 ### Step 2: Gap Analysis
 
-Use a Sonnet agent (the Librarian) to cross-reference changes against documentation:
+Use a Sonnet agent (gap analyst) to cross-reference changes against documentation:
 - For each changed code area, check if corresponding docs exist and are current
 - Identify: undocumented features, stale docs referencing removed code, outdated commands/paths
 - Check `docs/README.md` index for completeness
@@ -41,9 +41,10 @@ If no gaps found, report "Documentation is current" and stop.
 
 ### Step 3: Resolve Gaps
 
-For each gap (in priority order), use a Sonnet agent (the Historian) to write or update:
-- Read the appropriate template from `${CLAUDE_PLUGIN_ROOT}/skills/documentation-standards/templates/`
-- Read the style guide from `${CLAUDE_PLUGIN_ROOT}/skills/documentation-standards/reference/style-guide.md`
+For each gap (in priority order), use a Sonnet agent (writer) to write or update:
+- **Style override first:** if the project defines its own style (`docs/STYLE.md` or a project `writing-docs` skill), it supersedes the plugin defaults below — the `writing-docs` skill documents the lookup
+- Read the appropriate template from `${CLAUDE_PLUGIN_ROOT}/skills/writing-docs/templates/`
+- Read the style guide from `${CLAUDE_PLUGIN_ROOT}/skills/writing-docs/reference/style-guide.md`
 - Gather codebase context (read relevant source files, configs, commands)
 - Write the doc following template structure and style guide
 - Save to the correct location
@@ -67,7 +68,7 @@ reviewer, given this doc and the style guide, independently flag it? Drop everyt
 else — see the false-positive list at the bottom of this command.
 
 - If no issues survive, proceed to Step 6
-- Use a Sonnet agent (the Historian) to fix surviving issues
+- Use a Sonnet agent (writer) to fix surviving issues
 - If more than 3 issues were fixed, loop back to Step 4 for one re-review pass (maximum 1 re-review)
 
 ### Step 6: Finalize
@@ -103,8 +104,8 @@ Sonnet agents (a single doc) or up to 4 (a directory), splitting these dimension
 ### Step 3: Filter & Fix
 
 - Filter with the independent-reviewer test (see false-positive list below)
-- Use a Sonnet agent (the Historian) to fix surviving issues
-- Use a Sonnet agent (the Librarian) to re-verify the fixes are accurate (single verification pass)
+- Use a Sonnet agent (writer) to fix surviving issues
+- Use a Sonnet agent (verifier) to re-verify the fixes are accurate (single verification pass)
 
 ### Step 4: Report
 

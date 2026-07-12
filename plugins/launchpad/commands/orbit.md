@@ -1,126 +1,123 @@
 ---
-description: Push, create the PR, watch CI, and iterate on review feedback until go-for-landing
+description: Get the branch into review and keep it healthy — validate, self-review, open the PR; on re-entry, respond to review feedback
 argument-hint: "[PR title]"
-allowed-tools: Bash, Read, Write, Grep, Glob, Task, Skill, AskUserQuestion
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 ---
 
-# Orbit — PR, CI & Review Iteration
+# Orbit — Validate, Review, PR, Iterate
 
-Ascent complete, now circling: get the branch into review and keep it healthy until
-**go-for-landing**. The worktree stays alive throughout — orbit is where iteration
-happens. Merging, deploying, and cleanup are `/land`'s job.
+Two modes, detected by PR state. Orbit is re-enterable: run it again whenever
+feedback arrives. Merging is `/land`'s job — orbit never merges.
 
 ## Workflow
 
 ### Step 0: Preflight
 
 `git branch --show-current` — refuse on `main`:
-> You're on `main` — orbit is for feature branches. `/stage` or `/hop` first.
+> You're on `main` — orbit is for feature branches. `/stage` first.
 
-Gather: worktree path (`git rev-parse --show-toplevel`), main repo path
-(`git worktree list --porcelain | head -1 | sed 's/worktree //'`), base branch
-(mission brief `parent:`, fallback `main`).
+Gather: base branch (`parent:` from `.claude/mission/brief.md`, fallback `main`),
+stakes (`stakes:` from the brief). Detect mode: `gh pr view` succeeds → **Mode B
+(respond)**; otherwise → **Mode A (first orbit)**.
 
-### Step 1: Uncommitted Changes
+## Mode A — First Orbit: Validate → Self-Review → PR
 
-`git status --porcelain`. If dirty, invoke `Skill: launchpad:commit`. If still dirty
-after (user cancelled), ask: "Proceed without committing" / "Retry commit" / "Cancel".
+### A1: Uncommitted Changes
 
-### Step 2: Orbit V-Checks
+`git status --porcelain`. If dirty, invoke `Skill: commit:commit-conventions` and
+commit (fallback: commit matching recent `git log` style). Still dirty after (user
+declined) → ask: proceed without committing / retry / cancel.
 
-If `.claude/flight-plan.md` has a Verification section, run every **[orbit]**-tagged
-check that `/launch` hasn't already logged as passing in the flight log (re-run any
-that are cheap). Failures are blocking: fix at root cause (`systematic-debugging`)
-before pushing. Log results in the flight log.
+### A2: Validate
 
-### Step 3: Docs Check
+Invoke `Skill: launchpad:validation` and run it to completion. It ends with the
+stamp written clean — the push gate depends on it. Failures are blocking: root
+cause first (`systematic-debugging`), no pushing around a red check.
 
-Invoke `Skill: docs` — let it run autonomously; nothing to update is normal. If it
-made changes, invoke `Skill: launchpad:commit` again.
+### A3: Self-Review
 
-### Step 4: Push
+Invoke `Skill: launchpad:self-review` (depth follows stakes). Blocking findings →
+fix, then **re-run A2** (fixes dirty the stamp). Nits → carry to the PR body.
 
-`git push -u origin <branch>`. On failure ask: "Retry push" / "Stop".
+### A4: Push
 
-### Step 5: CI Watch
+`git push -u origin <branch>`. On failure ask: retry / stop.
+
+### A5: CI Watch
 
 `gh run list --branch <branch> --limit 1 --json status,conclusion,name --jq '.[0]'`
 (skip with a note if `gh` is unavailable).
+- **Running** → ask: wait (poll every 15s, up to 3 times, then re-ask) / proceed
+  without CI / stop.
+- **Failed** → read `gh run view --log-failed`, fix at root cause, commit,
+  re-validate, push again. That's orbit working, not an error.
+- **Passed** → proceed.
 
-- **Running** → ask (header "CI"): "Wait for CI" (poll every 15s, up to 3 times, then
-  re-ask) / "Proceed without CI" / "Stop".
-- **Failed** → read the failure log (`gh run view --log-failed`), fix at root cause,
-  commit, push again. This is orbit working as intended, not an error.
-- **Passed** → proceed silently.
+### A6: Create PR
 
-### Step 6: Create PR
+Verify commits ahead of base (`git log <base>..HEAD --oneline`); none → warn, **STOP**.
 
-Skip if a PR already exists (`gh pr view` succeeds) — go to Step 7.
-
-Verify commits ahead of base (`git log <base>..HEAD --oneline`); if none, warn and
-**STOP**.
-
-**Title** (priority): `$ARGUMENTS` → mission brief `task:` → humanized branch name.
-
+**Title:** `$ARGUMENTS` → brief `task:` → humanized branch name.
 **Body:**
 
 ```markdown
 ## Summary
-(2-5 bullets from the commit log, spec, and flight plan objective)
+(2–5 bullets from the spec/brief and commit log)
 
-## Verification — orbit checks (run pre-merge)
-- [x] V1 [orbit]: `go test ./...` — PASS
-- [x] V3 [orbit]: plan validates against staging config
+## Validation
+- <each check run in A2, with result>
+- Self-review: <clean | N blocking fixed>
 
-## Landing checks — deferred to deploy (/land's work queue)
-- [ ] V2 [landing]: kill the prometheus container → Slack alert within 3m
-- [ ] V5 [landing]: dashboard renders with live data
+## Notes
+- Nit: <carried nits, if any>
 ```
 
-Every `[landing]` check from the flight plan MUST appear in the landing-checks
-section — this is `/land`'s work queue; nothing gets silently dropped. No flight
-plan? Derive a checklist from the diff instead.
+Show title + body, ask: create / edit / skip / cancel. Create via
+`gh pr create --title ... --body-file <tmp> --base <base>`; show the URL. No `gh` →
+print the compare URL from `git remote get-url origin`.
 
-Show title + body, then ask (header "PR"): "Create PR" / "Edit" / "Skip PR" /
-"Cancel". Create via `gh pr create --title ... --body-file ... --base <base>`
-(write body to a temp file first). Show the URL. If `gh` is missing, print the
-compare URL derived from `git remote get-url origin`.
+## Mode B — Respond to Feedback
 
-### Step 7: Review Iteration
+### B1: Fetch
 
-Check for feedback: `gh pr view --json reviews,comments,reviewDecision`.
+`gh pr view --json reviews,comments,reviewDecision` plus
+`gh api repos/{owner}/{repo}/pulls/<n>/comments` for inline threads. Nothing new →
+report current state (reviews, CI) and stop.
 
-For each piece of reviewer feedback: process per `receiving-code-review` — verify
-against the codebase before implementing, push back with reasons where warranted,
-fix agreed items with checks first, commit, push. Repeat CI watch after each push.
+### B2: Process Each Item
 
-If there's no feedback yet, that's fine — orbit can be re-entered anytime
-(`/orbit` again, or `/status` to check state).
+Feedback is a claim, not an order: **verify against the codebase first**. Where the
+reviewer is right, fix it — check first, then fix (`test-driven-development`).
+Where they're wrong or it's out of scope, draft a reply with reasons; post replies
+only with the user's OK. Never implement a suggestion you haven't verified.
 
-### Step 8: Go/No-Go for Landing
+### B3: Re-validate and Push
 
-Report the gate:
+Any fixes → re-run `Skill: launchpad:validation` (stamp must be clean), commit,
+push, repeat the CI watch (A5).
 
-    Orbit status: <GO | NO-GO> for landing
-      CI:        <passing | failing | unknown>
-      Reviews:   <approved | changes requested | none yet>
-      Orbit V-checks: <N>/<N> passing
-      Landing queue:  <M> checks deferred to /land
-      PR:        <url>
+## Final Report (both modes) + STOP
 
-    GO — run /land to merge, deploy, and verify.
-    NO-GO — <the specific blockers>.
+```
+Orbit status: <GO | NO-GO> for landing
+  CI:         <passing | failing | unknown>
+  Reviews:    <approved | changes requested | none yet>
+  Validation: <clean @ timestamp>
+  PR:         <url>
 
-**STOP.** Do not merge — that's `/land`, and it needs your go.
+GO — run /land to merge and clean up.
+NO-GO — <the specific blockers>.
+```
+
+Append the orbit events to `.claude/mission/log.md`. **STOP — no merging.**
 
 ## Error Handling
 
 | Scenario | Action |
 |----------|--------|
-| On `main` | Refuse with message |
-| Orbit V-check fails | Blocking — root-cause fix before push |
-| CI fails | Read log, fix, push again (normal orbit work) |
+| On `main` | Refuse |
+| Validation fails | Blocking — root-cause fix, never push around it |
+| CI fails | Read log, fix, re-validate, push (normal orbit work) |
 | No commits ahead of base | Warn, stop before PR |
-| `gh` unavailable | Manual compare URL, skip CI/review automation |
-| PR already exists | Skip creation, continue to review iteration |
+| `gh` unavailable | Compare URL; skip CI/review automation with a note |
 | User cancels | Stop gracefully; orbit is safely re-enterable |

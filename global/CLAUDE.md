@@ -31,8 +31,8 @@ use judgment. Project CLAUDE.md files extend and override this.
 
 ## Workflow
 
-- Before implementing, check whether a launchpad skill or command applies, and use
-  it (`/mission` for shaping ideas, `/hop` for small tasks, flight rules during
-  implementation).
+- Before implementing, check whether a plugin command or skill applies, and use it
+  (`/stage` to set up a mission, `/mission-plan` for complex work, flight rules
+  during implementation, `/commit` to commit).
 - Anything touching auth, payments, secrets, migrations, prod infra, or destructive
   operations is high-stakes: slow down, gate, back up before destroying.

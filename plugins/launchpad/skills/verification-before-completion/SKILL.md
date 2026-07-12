@@ -69,9 +69,11 @@ targeted failing test written first (see `test-driven-development`).
 ## What Counts as Evidence
 
 Fresh command output with exit status; a failing-then-passing check; an HTTP response
-body; a screenshot of the rendered page (see `browser-verified-web-work` for web
-changes); a log line you watched appear. Not evidence: memory, inference, another
-agent's summary, or a passing run from before the last change.
+body; a screenshot of the rendered page (web changes are verified in a real
+browser); a log line you watched appear. Not evidence: memory, inference, another
+agent's summary, or a passing run from before the last change. Evidence must match
+the surface touched — a specialist verification skill answers this better when one
+is installed.
 
 ## When NOT to Use
 

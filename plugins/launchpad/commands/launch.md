@@ -1,93 +1,84 @@
 ---
-description: Execute the flight plan — phase by phase with a durable flight log; subagent orchestration for big builds
-argument-hint: "[--heavy | --solo]"
-allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Task, Skill, AskUserQuestion
+description: Implement the mission — packet orchestration when a spec exists, express mode straight from the brief when it doesn't
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 ---
 
-# Launch — Execute the Flight Plan
+# Launch — Implementation
 
-Implementation phase of the mission. Requires a flight plan; maintains a durable
-flight log so the mission survives crashes, compaction, and multi-day gaps.
+Implementation only: no pushing, no PR — that's `/orbit`. The flight rules
+(`test-driven-development`, `systematic-debugging`,
+`verification-before-completion`) are in effect throughout, in both modes.
 
-## Preconditions
+## Workflow
 
-Read `.claude/flight-plan.md`. If missing:
-> No flight plan. Run `/flight-plan` first — or use `/hop` if this is a small task.
-**STOP.**
+### Step 1: Preflight
 
-Read `.claude/flight-log.md` if it exists → **resume**: find the last DONE entry and
-continue from the next step. Announce what's being resumed.
+- Read `.claude/mission/brief.md`. Missing → point to `/stage`, **STOP**.
+- `git branch --show-current` — refuse to launch on `main`.
+- Mode select: `.claude/mission/spec.md` with a `## Work Packets` section →
+  **orchestrated**. Spec without packets, or no spec → **express**.
 
-## Mode Selection
+### Step 2a: Orchestrated Mode
 
-| Mode | When | Mechanics |
-|------|------|-----------|
-| **Lean** (default) | Most missions | Main session implements phase by phase |
-| **Heavyweight** (`--heavy`, or offer it when the plan has ~10+ steps / clearly multi-hour scope) | Big builds where context rot is real | Fresh implementer subagent per step + per-step review — load `launchpad:subagent-driven-development` and follow it |
-| **Solo** (`--solo`) | Constrained environments without subagents | Lean mode, no agent dispatches anywhere |
+Run the dispatch loop from [orchestration.md](../references/orchestration.md):
 
-If the plan is large and the user didn't pass a flag, ask once (header "Mode"):
-"Lean" / "Heavyweight" with a one-line cost note. Never silently pick heavyweight.
+1. For each packet, write `.claude/mission/packets/P<N>.md` in the reference's
+   format, then dispatch a fresh subagent at the packet's model tier. Prompt =
+   packet file path + project context pointers, never conversation history.
+   Independent packets dispatch in parallel; contract-providing packets go first.
+2. Receive the ≤15-line report. Reports are claims, not evidence.
+3. Verify asymmetrically — run the packet's done-check yourself, or dispatch a
+   stronger-model checker for architecture-heavy packets. Nothing self-certifies.
+4. Append packet, status, and evidence to `.claude/mission/log.md`.
+5. On BLOCKED, change something (context, packet split, approach) — never
+   redispatch verbatim. Three failures on one packet → **stop and surface**.
 
-## The Flight Log
+The orchestrator never implements. If you're editing code in this mode, a packet
+was mis-scoped — fix the packet.
 
-Create `.claude/flight-log.md` before the first step (or append to the existing one):
+### Step 2b: Express Mode
 
-    ---
-    mission: <from flight plan frontmatter>
-    mode: <lean | heavyweight | solo>
-    ---
-    # Flight Log
+Implement in the main session, straight from the brief (and spec, if one exists
+without packets). The flight rules carry the discipline: failing check first, root
+cause before remedy, fresh evidence before any "done." Log meaningful progress to
+`.claude/mission/log.md` as you go — the log survives compaction; the conversation
+doesn't.
 
-    | Step | Status | Evidence / Notes |
-    |------|--------|------------------|
-    | S1   | DONE   | `go test ./auth` → PASS (14 tests) |
-    | S2   | BLOCKED | missing CSI volume — needs user |
+### Step 3: Checkpoint Commits
 
-**Append after every step, before moving on.** Status vocabulary: DONE /
-DONE_WITH_CONCERNS / BLOCKED / NEEDS_CONTEXT. Evidence is a real command + result,
-per `verification-before-completion` — not "looks good".
+Commit at coherent boundaries (a packet lands, a check passes) — invoke
+`Skill: commit:commit-conventions` for staging and message rules. Fallback (commit
+plugin not installed): match the style of recent `git log`, stage only related
+changes together. Never push.
 
-## Work Loop (lean mode)
+### Step 4: Docs
 
-For each phase in the plan:
+Near the end, invoke `Skill: docs:writing-docs` to check whether the change needs
+doc updates; "nothing to update" is a normal outcome. Fallback (docs plugin not
+installed): note that docs weren't checked. Commit any doc changes as their own
+checkpoint.
 
-1. **Implement each step** — failing check first (`test-driven-development`), fix at
-   root cause when things break (`systematic-debugging`), browser-verify web changes
-   (`browser-verified-web-work`). Log each step on completion.
-2. **Phase checkpoint** — run the phase's checkpoint and any **orbit-tagged V-checks**
-   covering it. If a check fails: investigate root cause before proceeding (the
-   plan's recovery hint says where to look).
-3. **Commit the phase** — stage the phase's changes and invoke `Skill: launchpad:commit`.
-4. Continue to the next phase.
+### Step 5: Report + STOP
 
-**On BLOCKED:** log it, then change something before retrying — different approach,
-more context, or ask the user. Never re-run the identical attempt. Three failed
-attempts at one step = stop and surface it (3-strikes rule).
+```
+Launch complete.
+  Packets:  <N/N done | express>
+  Commits:  <count>
+  Docs:     <updated | nothing to update | not checked>
+  Log:      .claude/mission/log.md
 
-## Final Review
+  Run /orbit to validate, self-review, and open the PR.
+```
 
-After all phases: run the full remaining orbit V-checks, then a **whole-branch
-review** — one strong reviewer (strongest available model) over
-`git diff <parent>..HEAD` with the flight plan and spec, per the peer-review skill's
-standard tier (panel if the stakes rubric says high). Fix blocking findings, log them.
-
-## Handoff
-
-    Launch complete!
-      Phases:   <N>/<N>    Steps: <M> (<X> DONE, <Y> with concerns)
-      V-checks: <orbit checks run/passed; landing checks deferred to /land>
-      Log:      .claude/flight-log.md
-      Next:     /orbit — push, PR, and review iteration
-
-**STOP.** Do not push or create a PR — that's `/orbit`.
+Unfinished packets or open concerns → list them instead and say what's needed.
+**STOP.** Validation and PR are `/orbit`'s job.
 
 ## Error Handling
 
 | Scenario | Action |
 |----------|--------|
-| No flight plan | Point to /flight-plan or /hop, stop |
-| Flight log shows all steps DONE | Say the mission looks complete; suggest /orbit |
-| Checkpoint fails repeatedly | 3-strikes: stop, log BLOCKED, surface to user |
-| /commit finds blocking issues | Fix them in-place; they count as work in the current phase |
-| Session dies mid-phase | Flight log makes resume safe — next /launch continues |
+| No mission brief | Point to `/stage`, stop |
+| On `main` | Refuse |
+| Packet BLOCKED ×3 | Stop, surface to user with the three attempts |
+| Subagent dispatch fails | Retry once, then fall back to express for that packet |
+| commit/docs plugin missing | Use stated fallback, note it once |

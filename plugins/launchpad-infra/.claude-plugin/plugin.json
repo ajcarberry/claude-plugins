@@ -1,8 +1,0 @@
-{
-  "name": "launchpad-infra",
-  "version": "0.1.0",
-  "description": "Infrastructure domain pack for launchpad — plan-before-apply discipline and homelab/IaC landing mechanics.",
-  "author": {
-    "name": "Alex Carberry"
-  }
-}

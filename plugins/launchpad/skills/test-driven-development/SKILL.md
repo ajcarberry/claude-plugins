@@ -40,7 +40,7 @@ Repeat per behavior. One behavior per check.
 |---|---|
 | Caddy/nginx route | `curl -s -o /dev/null -w '%{http_code}' <url>` → expect 404 now, 200 after |
 | Nomad/k8s job | `nomad job status <job>` / health endpoint → absent now, healthy after |
-| CSS/UI change | Page load + screenshot showing the wrong state now, right state after (see `browser-verified-web-work`) |
+| CSS/UI change | Page load + screenshot showing the wrong state now, right state after — verified in a real browser |
 | CLI flag | Run the command → errors or lacks the flag now, works after |
 | Docs/content | Rendered preview showing the gap now, the content after |
 

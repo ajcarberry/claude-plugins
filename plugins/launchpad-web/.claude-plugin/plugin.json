@@ -1,8 +1,0 @@
-{
-  "name": "launchpad-web",
-  "version": "0.1.0",
-  "description": "Web domain pack for launchpad — perf/a11y quality checks and web landing mechanics for /land.",
-  "author": {
-    "name": "Alex Carberry"
-  }
-}

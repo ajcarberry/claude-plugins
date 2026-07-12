@@ -1,7 +1,7 @@
 {
   "name": "docs",
-  "version": "0.2.0",
-  "description": "Autonomous documentation management with risk-scaled review. Detects drift, writes docs, and self-reviews against the codebase.",
+  "version": "1.0.0",
+  "description": "Documentation management — /docs gap detection and repair, writing-docs skill with Diátaxis types and a default style that defers to the project's own (docs/STYLE.md).",
   "author": {
     "name": "Alex Carberry"
   }

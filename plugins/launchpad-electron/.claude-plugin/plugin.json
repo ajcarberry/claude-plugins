@@ -1,8 +1,0 @@
-{
-  "name": "launchpad-electron",
-  "version": "0.1.0",
-  "description": "Electron domain pack for launchpad — main/renderer process discipline and packaging/smoke-test landing mechanics.",
-  "author": {
-    "name": "Alex Carberry"
-  }
-}

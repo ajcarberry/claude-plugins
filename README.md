@@ -1,26 +1,52 @@
 # Claude Plugins
 
-Development workflow plugins for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+Development and product workflow plugins for
+[Claude Code](https://code.claude.com/docs). Design doc: `SUPERPOWERS-DESIGN.md`.
+
+Four plugins, each useful alone. Launchpad is the only one that calls the others —
+always optionally, with a stated fallback.
 
 ## Plugins
 
+### [launchpad](plugins/launchpad/) — dev lifecycle
+
+```
+IDEA → /stage → /mission-plan* → /launch → /orbit → /land        (* optional)
+```
+
+Worktree + mission brief + stakes tier, spec + work packets, orchestrated or
+express implementation, validate → self-review → PR → iterate, merge + cleanup.
+Iron-Law flight rules (verification, TDD, systematic debugging) auto-invoke during
+implementation; hooks enforce a dirty/clean validation stamp so nothing gets
+pushed or merged unvalidated.
+
+### [tpm](plugins/tpm/) — product lifecycle
+
+Signals in, decisions out — built for a TPM/maintainer running an OSS project:
+
+- `/feedback` — Discord/Slack/GitHub signal → ranked themes with evidence; `dig`
+  mode investigates flagged themes
+- `/triage` — issues/PRs classified against the roadmap; alignment replies drafted
+- `/roadmap` — proactive planning or reactive slotting with explicit displacement
+- `/spec` — idea → spec; the handoff to launchpad
+- `/comms` — community and exec-sponsor updates from the same facts (drafts only)
+
 ### [docs](plugins/docs/)
 
-Autonomous documentation management with multi-agent review. Detects drift, writes docs, and self-reviews using confidence scoring.
+`/docs` (gap detection and repair; focused review mode) + the `writing-docs` skill:
+Diátaxis types, a default style guide, and a project override (`docs/STYLE.md`
+supersedes).
 
-- `/docs` — full autonomous pass: detect gaps, write/update, multi-agent review, fix
-- `/docs review <path>` — focused accuracy check against the codebase
-- `documentation-standards` skill — Diataxis framework, templates, style guide
+### [commit](plugins/commit/)
 
-### [launchpad](plugins/launchpad/)
+`/commit` + `commit-conventions`: related changes staged together, messages in the
+project's own convention (documented → inferred from git log → default), never
+pushes unasked.
 
-Session lifecycle management — workspace setup through PR creation.
+## Global baseline
 
-- `/stage` — fast workspace setup (worktree + branch + mission brief)
-- `/flight-plan` — research, scope, and plan with EARS requirements
-- `/commit` — multi-agent review with confidence scoring
-- `/land` — commit, docs, push, CI check, and PR creation
-- `/write-tests` — behavior-first test patterns
+[`global/`](global/) versions a ~40-line `~/.claude/CLAUDE.md` — surgical changes,
+think-before-coding, goal-driven execution — with an installer.
 
 ## Installation
 
@@ -30,15 +56,14 @@ Add to your project's `.claude/settings.json`:
 {
   "extraKnownMarketplaces": {
     "claude-plugins": {
-      "source": {
-        "source": "github",
-        "repo": "ajcarberry/claude-plugins"
-      }
+      "source": { "source": "github", "repo": "ajcarberry/claude-plugins" }
     }
   },
   "enabledPlugins": {
+    "launchpad@claude-plugins": true,
+    "tpm@claude-plugins": true,
     "docs@claude-plugins": true,
-    "launchpad@claude-plugins": true
+    "commit@claude-plugins": true
   }
 }
 ```
@@ -49,10 +74,7 @@ For local development, use a directory source instead:
 {
   "extraKnownMarketplaces": {
     "claude-plugins": {
-      "source": {
-        "source": "directory",
-        "path": "/absolute/path/to/claude-plugins"
-      }
+      "source": { "source": "directory", "path": "/absolute/path/to/claude-plugins" }
     }
   }
 }
