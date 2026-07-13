@@ -32,19 +32,6 @@ always optionally with a stated fallback:
 
 ## Architecture
 
-### Plugin structure
-
-```
-plugins/<name>/
-├── .claude-plugin/plugin.json   # metadata
-├── commands/                    # slash commands (YAML frontmatter + markdown)
-├── skills/                      # SKILL.md (+ references/, templates/)
-├── hooks/                       # hooks.json (launchpad only)
-├── scripts/                     # hook scripts (launchpad only)
-├── references/                  # shared references loaded on demand
-└── README.md
-```
-
 Top-level `.claude-plugin/marketplace.json` registers all four.
 
 ### Key design rules
@@ -91,24 +78,3 @@ CI validates frontmatter (`.github/scripts/validate-frontmatter.ts`): commands a
 skills must have a `description`; run
 `bun .github/scripts/validate-frontmatter.ts plugins/` before committing plugin
 file changes.
-
-## Installation
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "my-plugins": {
-      "source": { "source": "github", "repo": "ajcarberry/claude-plugins" }
-    }
-  },
-  "enabledPlugins": {
-    "launchpad@my-plugins": true,
-    "tpm@my-plugins": true,
-    "docs@my-plugins": true,
-    "commit@my-plugins": true
-  }
-}
-```
-
-Local development: use a directory source —
-`{ "source": { "source": "directory", "directory": "/path/to/plugins/launchpad" } }`.
