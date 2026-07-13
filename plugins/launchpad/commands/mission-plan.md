@@ -24,12 +24,13 @@ If `.claude/mission/spec.md` already exists, ask: revise it or start over.
 ### Step 2: Author the Spec
 
 **Load the spec skill:** invoke `Skill: tpm:spec-authoring`. It owns the template
-(including the project-override lookup) and the authoring discipline.
+(including the project-override lookup), the section gates, and the authoring
+discipline.
 
-**Fallback** (tpm plugin not installed): use this minimal structure —
-`## Problem`, `## Desired Outcome` (from the brief), `## Requirements` (numbered,
-testable), `## Out of Scope`, `## Open Questions`, `## Done When` (observable
-checks).
+**Fallback** (tpm plugin not installed): use the same three-section shape,
+minimally — `## Problem` (statement, objectives, out of scope, open questions),
+`## Proposal` (functional, user-oriented), `## Implementation` (Done When checks
++ plan). Problem and Proposal each ≤ 1 page.
 
 **Ground it:** explore the relevant code before writing — the spec must name real
 files, real constraints, real integration points, not guesses. Where the skill
@@ -46,9 +47,9 @@ in the brief and say so.
 
 If the work merits orchestration (~5+ separable pieces — see
 [orchestration.md](../references/orchestration.md), "When NOT to orchestrate"),
-append a `## Work Packets` section to the spec: one packet per piece in the
-reference's format (goal, files in scope, contracts, spec slice, done-check, tier),
-ordered so contracts exist before their consumers.
+add a `## Work Packets` section under the spec's Implementation section: one
+packet per piece in the reference's format (goal, files in scope, contracts, spec
+slice, done-check, tier), ordered so contracts exist before their consumers.
 
 Smaller work: skip packets entirely and note "express launch" in the spec.
 

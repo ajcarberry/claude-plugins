@@ -24,8 +24,9 @@ GitHub issues/PRs ──────> /triage ── needs-decision ─┘
   nothing posted without approval.
 - **`/roadmap`** — proactive horizon planning (stated prioritization frame,
   stakeholder question lists) or reactive slotting with explicit displacement.
-- **`/spec`** — idea → spec; the handoff point to launchpad. *(Pending: spec
-  template standardization.)*
+- **`/spec`** — idea → spec: Problem → Proposal → Implementation, each section
+  gated in order (problem-approved → proposal-approved). The handoff point to
+  launchpad.
 - **`/comms`** — one set of facts rendered for a named audience: community post or
   exec sponsor update. Drafts only; never posts.
 
@@ -35,7 +36,9 @@ GitHub issues/PRs ──────> /triage ── needs-decision ─┘
 dig), `triage-alignment` (verify-before-judging, classification, OSS feedback
 tone), `roadmap-planning` (both modes, displacement log, hygiene),
 `stakeholder-comms` (audience model, facts-only, same-news-both-audiences),
-`spec-authoring` *(pending template)*.
+`spec-authoring` (three gated sections, 1-page limits on Problem and Proposal,
+functional-not-implementation proposals, lightweight OBJ-N traceability;
+`specs/TEMPLATE.md` supersedes the plugin template).
 
 ## Conventions
 
