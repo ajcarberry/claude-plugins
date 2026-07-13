@@ -1,7 +1,7 @@
 {
   "name": "launchpad",
-  "version": "0.3.3",
-  "description": "Session lifecycle — /stage creates workspaces, /flight-plan researches and plans, /land closes out with PR.",
+  "version": "1.0.0",
+  "description": "Dev lifecycle — /stage worktree, /mission-plan spec, /launch implementation, /orbit validate+review+PR, /land merge+cleanup; Iron-Law flight rules and a dirty/clean validation stamp enforced by hooks.",
   "author": {
     "name": "Alex Carberry"
   }

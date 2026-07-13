@@ -1,32 +1,58 @@
 #!/bin/bash
+# SessionStart (startup|clear|compact): always inject the flight-rules bootstrap;
+# when a mission is active, also inject brief + spec + log, detect drift, and run
+# project env init in the background.
 INPUT=$(cat)
 CWD=$(echo "$INPUT" | jq -r '.cwd')
-MISSION_BRIEF="$CWD/.claude/mission-brief.md"
-FLIGHT_PLAN="$CWD/.claude/flight-plan.md"
+MISSION="$CWD/.claude/mission"
+BRIEF="$MISSION/brief.md"
+SPEC="$MISSION/spec.md"
+LOG="$MISSION/log.md"
 
-if [ ! -f "$MISSION_BRIEF" ]; then
+# --- Flight-rules bootstrap: always injected (survives /clear and compaction) ---
+BOOTSTRAP="# Flight Rules
+
+Launchpad flight rules are in effect. Before any implementation work — writing code,
+fixing a bug, changing config — check whether a launchpad skill applies and use it,
+announcing which one (\"Using test-driven-development: ...\"). Non-negotiable rules:
+no completion claim without fresh verification evidence, matched to the surface
+touched (a web change means loading the page, an infra change means reading live
+state); no production change without a check that fails first; no bug fix without a
+stated root cause. Process rules take priority over implementation momentum.
+Priority order: explicit user instructions > flight rules > default behavior.
+During a mission, the stakes tier in the brief sizes the ceremony — low-stakes work
+gets a light touch."
+
+emit_context() {
+  jq -n --arg content "$1" '{
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: $content
+    }
+  }'
+}
+
+# No mission in progress — inject the bootstrap alone.
+if [ ! -f "$BRIEF" ]; then
+  emit_context "$BOOTSTRAP"
   exit 0
 fi
 
-BRIEF_CONTENT=$(cat "$MISSION_BRIEF")
+BRIEF_CONTENT=$(cat "$BRIEF")
 
-# --- Extract runtime context ---
+# --- Runtime vs expected context ---
 ACTUAL_BRANCH=$(cd "$CWD" && git branch --show-current 2>/dev/null || echo "unknown")
 WORKTREE_NAME=$(basename "$CWD")
-
-# --- Extract expected context from mission brief (YAML frontmatter) ---
 EXPECTED_BRANCH=$(echo "$BRIEF_CONTENT" | sed -n '/^---$/,/^---$/p' | grep -m1 '^branch:' | sed 's/^branch: *//' | xargs)
 BRIEF_DATE=$(echo "$BRIEF_CONTENT" | sed -n '/^---$/,/^---$/p' | grep -m1 '^date:' | sed 's/^date: *//' | xargs)
+STAKES=$(echo "$BRIEF_CONTENT" | sed -n '/^---$/,/^---$/p' | grep -m1 '^stakes:' | sed 's/^stakes: *//' | xargs)
 
-# --- Detect mismatches ---
 WARNINGS=""
 
-# Branch mismatch
 if [ -n "$EXPECTED_BRANCH" ] && [ "$ACTUAL_BRANCH" != "$EXPECTED_BRANCH" ]; then
   WARNINGS="${WARNINGS}WARNING: Actual branch \"${ACTUAL_BRANCH}\" does not match brief's expected branch \"${EXPECTED_BRANCH}\". You may be in the wrong worktree — verify before proceeding.\n"
 fi
 
-# Stale brief (> 3 days old)
 if [ -n "$BRIEF_DATE" ]; then
   BRIEF_EPOCH=$(date -j -f "%Y-%m-%d" "$BRIEF_DATE" "+%s" 2>/dev/null || date -d "$BRIEF_DATE" "+%s" 2>/dev/null)
   NOW_EPOCH=$(date "+%s")
@@ -38,49 +64,21 @@ if [ -n "$BRIEF_DATE" ]; then
   fi
 fi
 
-# Dirty working tree
 DIRTY=$(cd "$CWD" && git status --porcelain 2>/dev/null)
 if [ -n "$DIRTY" ]; then
   WARNINGS="${WARNINGS}WARNING: There are uncommitted changes in this worktree. Review them before making new changes.\n"
 fi
 
-# --- Fresh worktree detection: background env init ---
-NEEDS_BUILD=""
-NEEDS_SYNC=""
+# --- Project-defined environment init (background, opt-in via executable script) ---
 BG_MSG=""
-
-if [ ! -f "$CWD/cluster" ]; then
-  NEEDS_BUILD=true
+INIT_SCRIPT="$CWD/.claude/session-init.sh"
+if [ -x "$INIT_SCRIPT" ]; then
+  BG_MSG="Project session-init.sh running in background."
+  ( cd "$CWD" && "$INIT_SCRIPT" >/dev/null 2>&1 ) &
 fi
 
-if [ ! -d "$CWD/.venv" ]; then
-  NEEDS_SYNC=true
-fi
-
-if [ -n "$NEEDS_BUILD" ] || [ -n "$NEEDS_SYNC" ]; then
-  TASKS=""
-  if [ -n "$NEEDS_BUILD" ]; then
-    TASKS="CLI build"
-  fi
-  if [ -n "$NEEDS_SYNC" ]; then
-    [ -n "$TASKS" ] && TASKS="$TASKS + "
-    TASKS="${TASKS}Python sync"
-  fi
-  BG_MSG="Fresh worktree detected — ${TASKS} running in background."
-
-  # Run env init in background
-  (
-    if [ -n "$NEEDS_BUILD" ]; then
-      cd "$CWD/tools/cluster" && go build -o ../../cluster ./cmd/cluster 2>/dev/null
-    fi
-    if [ -n "$NEEDS_SYNC" ]; then
-      cd "$CWD" && uv sync 2>/dev/null
-    fi
-  ) &
-fi
-
-# --- Build additionalContext ---
-PREAMBLE="Mission brief found. Respond to the user's first message with the following format, then proactively explore the relevant codebase areas and present a concise plan of attack. Do not ask what to work on — you already know.
+# --- Assemble ---
+PREAMBLE="Mission in progress (stakes: ${STAKES:-unset}). Respond to the user's first message with the following format, then continue the mission — do not ask what to work on; you already know.
 
 When greeting the user, start your response with:
 
@@ -92,6 +90,7 @@ When greeting the user, start your response with:
   Working directory: ${CWD}
   Worktree: ${WORKTREE_NAME}
   Branch: ${ACTUAL_BRANCH}
+  Stakes: ${STAKES:-unset}
 "
 
 if [ -n "$WARNINGS" ]; then
@@ -105,34 +104,39 @@ ${BG_MSG}
 "
 fi
 
-# Tailor closing instructions based on whether a flight plan exists
-if [ -f "$FLIGHT_PLAN" ]; then
+if [ -f "$LOG" ]; then
   PREAMBLE="${PREAMBLE}
-A flight plan is loaded below. Orient to it and start implementing — no need to re-explore the codebase."
+The mission log is loaded below — resume from its last entry rather than re-planning or re-exploring."
+elif [ -f "$SPEC" ]; then
+  PREAMBLE="${PREAMBLE}
+The spec is loaded below. Orient to it and continue — /launch implements it; no need to re-explore from scratch."
 else
   PREAMBLE="${PREAMBLE}
-Then proceed to explore the codebase and present your plan of attack."
+No spec yet. For complex work suggest /mission-plan; otherwise explore and proceed under the flight rules."
 fi
 
-# --- Assemble context from both documents ---
-CONTEXT="${PREAMBLE}
+CONTEXT="${BOOTSTRAP}
+
+${PREAMBLE}
 
 # Mission Brief
 
 ${BRIEF_CONTENT}"
 
-if [ -f "$FLIGHT_PLAN" ]; then
-  PLAN_CONTENT=$(cat "$FLIGHT_PLAN")
+if [ -f "$SPEC" ]; then
   CONTEXT="${CONTEXT}
 
-# Flight Plan
+# Spec
 
-${PLAN_CONTENT}"
+$(cat "$SPEC")"
 fi
 
-jq -n --arg content "$CONTEXT" '{
-  hookSpecificOutput: {
-    hookEventName: "SessionStart",
-    additionalContext: $content
-  }
-}'
+if [ -f "$LOG" ]; then
+  CONTEXT="${CONTEXT}
+
+# Mission Log
+
+$(cat "$LOG")"
+fi
+
+emit_context "$CONTEXT"

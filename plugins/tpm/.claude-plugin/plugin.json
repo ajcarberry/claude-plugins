@@ -1,0 +1,8 @@
+{
+  "name": "tpm",
+  "version": "1.0.0",
+  "description": "Product lifecycle for TPMs and maintainers — /feedback signal aggregation with dig mode, /triage issue/PR alignment, /roadmap planning, /spec authoring, /comms audience-tailored updates.",
+  "author": {
+    "name": "Alex Carberry"
+  }
+}
