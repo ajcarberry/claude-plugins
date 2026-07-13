@@ -8,7 +8,9 @@ Reusable Claude Code plugins that raise the quality and consistency of AI-assist
 work. The thesis: **context quality determines agent quality** — these plugins ship
 the efficiency machinery agentic workflows need (work packets, model tiering,
 verification asymmetry, deterministic hook enforcement) as portable, shareable
-context. `SUPERPOWERS-DESIGN.md` is the authoritative design doc (v4).
+context. The plugins themselves are the source of truth — there is no separate
+design doc to keep in sync (the v4 design rationale lives in git history and the
+PR record).
 
 Four plugins, each useful alone; launchpad is the only one that calls the others,
 always optionally with a stated fallback:
@@ -26,8 +28,7 @@ always optionally with a stated fallback:
 - **commit** (`plugins/commit/`) — `/commit` plus `commit-conventions` (atomicity,
   message-style override order).
 
-`global/` holds the ~40-line global CLAUDE.md baseline and its installer;
-`pressure-tests/` holds scenarios for the Iron-Law skills.
+`global/` holds the ~40-line global CLAUDE.md baseline and its installer.
 
 ## Architecture
 
@@ -68,9 +69,10 @@ Top-level `.claude-plugin/marketplace.json` registers all four.
   verification, ≤15-line subagent reports.
 - Iron-Law skills (`verification-before-completion`, `test-driven-development`,
   `systematic-debugging`) use the full house style (Iron Law, Go/No-Go gate,
-  failure modes, red flags) and are validated against `pressure-tests/`. All other
-  skills use a lean format. The Iron Laws double as routers: evidence must match
-  the surface touched, which pulls specialist skills in when installed.
+  failure modes, red flags); they were validated against pressure scenarios at
+  v4 (9/9 behavioral passes) and now iterate from real usage. All other skills
+  use a lean format. The Iron Laws double as routers: evidence must match the
+  surface touched, which pulls specialist skills in when installed.
 
 ## Developing plugins
 

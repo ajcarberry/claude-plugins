@@ -38,7 +38,7 @@ IDEA → /stage → /mission-plan* → /launch → /orbit → /land
   scaled by stakes; independent-reviewer filter; blocking vs. nit.
 - **Flight rules** (auto-invoke during implementation):
   `verification-before-completion`, `test-driven-development`,
-  `systematic-debugging` — Iron-Law format, pressure-tested in `pressure-tests/`.
+  `systematic-debugging` — Iron-Law format (law, Go/No-Go gate, failure modes).
 
 ## Hooks — skills teach, hooks enforce
 

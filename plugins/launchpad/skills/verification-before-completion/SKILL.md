@@ -1,6 +1,6 @@
 ---
 name: verification-before-completion
-description: Use when about to claim work is done, complete, fixed, passing, working, or deployed — before saying "done", "fixed", "should work now", marking a todo completed, reporting success to the user, or committing. Also use when relying on a subagent's report of success or on test results from earlier in the session.
+description: Use when about to claim work is done, complete, fixed, passing, working, or deployed — before saying "done", "fixed", "should work now", marking a todo completed, reporting success to the user, or committing. Also when the user asks to "just fix it and confirm", frames a change as quick/trivial/urgent, relies on a subagent's report of success, or cites test results from earlier in the session.
 ---
 
 # Flight Rule: Verification Before Completion

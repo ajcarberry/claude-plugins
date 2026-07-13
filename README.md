@@ -1,7 +1,7 @@
 # Claude Plugins
 
 Development and product workflow plugins for
-[Claude Code](https://code.claude.com/docs). Design doc: `SUPERPOWERS-DESIGN.md`.
+[Claude Code](https://code.claude.com/docs).
 
 Four plugins, each useful alone. Launchpad is the only one that calls the others —
 always optionally, with a stated fallback.
