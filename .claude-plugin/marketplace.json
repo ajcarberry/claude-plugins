@@ -1,32 +1,38 @@
 {
   "name": "personal-cc-plugins",
-  "description": "Development and product workflow plugins for Claude Code — dev lifecycle (launchpad), product lifecycle (tpm), documentation (docs), and commit quality (commit)",
+  "description": "Development and product workflow plugins for Claude Code \u2014 dev lifecycle (launchpad), product lifecycle (tpm), documentation (docs), and commit quality (commit), and OSS maintainer triage (oss-triage)",
   "owner": {
     "name": "Alex Carberry"
   },
   "plugins": [
     {
       "name": "launchpad",
-      "description": "Dev lifecycle — /stage, /mission-plan, /launch, /orbit, /land; Iron-Law flight rules and hook-enforced validation stamp",
+      "description": "Dev lifecycle \u2014 /stage, /mission-plan, /launch, /orbit, /land; Iron-Law flight rules and hook-enforced validation stamp",
       "source": "./plugins/launchpad",
       "category": "productivity"
     },
     {
       "name": "tpm",
-      "description": "Product lifecycle — /feedback, /triage, /roadmap, /spec, /comms for TPMs and OSS maintainers",
+      "description": "Product lifecycle \u2014 /feedback, /triage, /roadmap, /spec, /comms for TPMs and OSS maintainers",
       "source": "./plugins/tpm",
       "category": "productivity"
     },
     {
       "name": "docs",
-      "description": "Documentation management — /docs plus the writing-docs skill with project style override",
+      "description": "Documentation management \u2014 /docs plus the writing-docs skill with project style override",
       "source": "./plugins/docs",
       "category": "productivity"
     },
     {
       "name": "commit",
-      "description": "Commit quality — intelligent staging and project-convention messages; never pushes unasked",
+      "description": "Commit quality \u2014 intelligent staging and project-convention messages; never pushes unasked",
       "source": "./plugins/commit",
+      "category": "productivity"
+    },
+    {
+      "name": "oss-triage",
+      "description": "Maintainer triage for public GitHub issues \u2014 /oss-triage:pass, :issue, :reply, :status, :eng-summary; one agent per issue, validate before verdict, adversarial review, human-gated posting",
+      "source": "./plugins/oss-triage",
       "category": "productivity"
     }
   ]
