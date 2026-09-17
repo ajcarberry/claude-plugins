@@ -1,6 +1,6 @@
-# oss-triage workspace config
+# lore-mod workspace config
 
-Filled by `/oss-triage:setup`. Read by every command. Keep it short and factual.
+Filled by `/lore-mod:setup`. Read by every command. Keep it short and factual.
 
 ## Repository
 - repo: `<owner>/<repo>`

@@ -23,7 +23,7 @@ Written as the maintainer, for humans. Short sentences, active voice, plain word
 ## Review loop
 
 1. Draft.
-2. Dispatch `oss-triage:adversarial-reviewer` with the draft, the thread, the evidence, and the proposed mechanics. Apply its fixes. Verdicts of REWRITE mean the claim changed; say so to the maintainer.
+2. Dispatch `lore-mod:adversarial-reviewer` with the draft, the thread, the evidence, and the proposed mechanics. Apply its fixes. Verdicts of REWRITE mean the claim changed; say so to the maintainer.
 3. Hand the path to the maintainer. They review in the file with `<!-- HITL-<NAME>-CHANGE: note -->text<!-- /HITL-<NAME>-CHANGE -->` and `<!-- HITL-<NAME>-DELETE -->text<!-- /HITL-<NAME>-DELETE -->`. Answer each note in chat, apply, strip markers, show the changed lines. When asked for more warmth or vision in a paragraph, add one or two sentences inside their structure; do not rewrite the paragraph. Do not rewrite a file wholesale while they have it open.
 4. Post only on an explicit go for that draft.
 

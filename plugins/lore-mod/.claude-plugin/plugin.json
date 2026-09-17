@@ -1,7 +1,7 @@
 {
-  "name": "oss-triage",
+  "name": "lore-mod",
   "version": "1.0.0",
-  "description": "Maintainer triage for public GitHub issues — /oss-triage:pass, :issue, :reply, :status, :eng-summary. One fresh agent per issue, validation on the fixed version before any verdict, adversarial review of every draft, human-gated posting, templated replies and engineering summaries.",
+  "description": "Maintainer triage for public GitHub issues — /lore-mod:pass, :issue, :reply, :status, :eng-summary. One fresh agent per issue, validation on the fixed version before any verdict, adversarial review of every draft, human-gated posting, templated replies and engineering summaries.",
   "author": {
     "name": "Alex Carberry"
   }

@@ -1,6 +1,6 @@
 {
   "name": "personal-cc-plugins",
-  "description": "Development and product workflow plugins for Claude Code \u2014 dev lifecycle (launchpad), product lifecycle (tpm), documentation (docs), and commit quality (commit), and OSS maintainer triage (oss-triage)",
+  "description": "Development and product workflow plugins for Claude Code \u2014 dev lifecycle (launchpad), product lifecycle (tpm), documentation (docs), and commit quality (commit), and OSS maintainer triage (lore-mod)",
   "owner": {
     "name": "Alex Carberry"
   },
@@ -30,9 +30,9 @@
       "category": "productivity"
     },
     {
-      "name": "oss-triage",
-      "description": "Maintainer triage for public GitHub issues \u2014 /oss-triage:pass, :issue, :reply, :status, :eng-summary; one agent per issue, validate before verdict, adversarial review, human-gated posting",
-      "source": "./plugins/oss-triage",
+      "name": "lore-mod",
+      "description": "Maintainer triage for public GitHub issues \u2014 /lore-mod:pass, :issue, :reply, :status, :eng-summary; one agent per issue, validate before verdict, adversarial review, human-gated posting",
+      "source": "./plugins/lore-mod",
       "category": "productivity"
     }
   ]

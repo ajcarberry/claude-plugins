@@ -4,9 +4,9 @@ argument-hint: "[date]"
 allowed-tools: Bash, Read, Glob, Grep
 ---
 
-# /oss-triage:status
+# /lore-mod:status
 
-Load `Skill: oss-triage:triage-core`. Read `.oss-triage/config.md` and the pass log for `$ARGUMENTS` (default: the latest).
+Load `Skill: lore-mod:triage-core`. Read `.lore-mod/config.md` and the pass log for `$ARGUMENTS` (default: the latest).
 
 1. Collect every issue and PR number mentioned in the pass log and the verdict list.
 2. Query each live: state, state reason, labels, title, last comment author and time.

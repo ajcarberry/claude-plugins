@@ -4,9 +4,9 @@ argument-hint: "<issue number> [post|labels|close]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, Skill
 ---
 
-# /oss-triage:reply
+# /lore-mod:reply
 
-Load `Skill: oss-triage:triage-reply`. Read `.oss-triage/config.md`.
+Load `Skill: lore-mod:triage-reply`. Read `.lore-mod/config.md`.
 
 - No `post|labels|close` word in `$ARGUMENTS`: read `repro/<n>/reply-draft.md`. If it has HITL markers, answer each in chat, apply, strip, show the changed lines. If it has none, run the adversarial reviewer if that has not happened, then present the draft path with `:1` and the proposed mechanics.
 - `post`: the maintainer has said go on the current text. Post the comment with `--body-file`, then the label and title changes they approved, then close only if they said close. Confirm live state and report the URL.

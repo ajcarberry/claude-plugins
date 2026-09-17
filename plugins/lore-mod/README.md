@@ -1,4 +1,4 @@
-# oss-triage
+# lore-mod (Lore moderator)
 
 Maintainer triage for a public GitHub issue tracker, built from the first Lore OSS triage pass (September 2026). Designed for Claude Code agents: procedures, razors, and quality guards, split into small skills so a session loads only what it needs.
 
@@ -14,12 +14,12 @@ Maintainer triage for a public GitHub issue tracker, built from the first Lore O
 
 | Command | Use |
 |---|---|
-| `/oss-triage:setup` | First run in a workspace: write `.oss-triage/config.md`, read the repo's governance files, snapshot labels |
-| `/oss-triage:pass` | A full triage pass: snapshot, build once, one agent per issue, verdict list in tiers |
-| `/oss-triage:issue <n>` | One issue end to end: validate, draft, review, hand to the maintainer |
-| `/oss-triage:reply <n>` | Draft, revise via HITL markers, and post a reply for one issue |
-| `/oss-triage:status` | Live-state report of everything the pass touched |
-| `/oss-triage:eng-summary` | Build the engineering Slack summary from `FOR-ENGINEERING.md` with a live check per item |
+| `/lore-mod:setup` | First run in a workspace: write `.lore-mod/config.md`, read the repo's governance files, snapshot labels |
+| `/lore-mod:pass` | A full triage pass: snapshot, build once, one agent per issue, verdict list in tiers |
+| `/lore-mod:issue <n>` | One issue end to end: validate, draft, review, hand to the maintainer |
+| `/lore-mod:reply <n>` | Draft, revise via HITL markers, and post a reply for one issue |
+| `/lore-mod:status` | Live-state report of everything the pass touched |
+| `/lore-mod:eng-summary` | Build the engineering Slack summary from `FOR-ENGINEERING.md` with a live check per item |
 
 ## Skills (loaded by the commands, not all at once)
 
@@ -45,4 +45,4 @@ Maintainer triage for a public GitHub issue tracker, built from the first Lore O
   scripts/                repro scripts per issue
 ```
 
-Repository-specific facts (labels, mirror model, binary cache, build command, community channels) live in `.oss-triage/config.md` in the workspace. `reference/lore-notes.md` is the filled example for EpicGames/lore.
+Repository-specific facts (labels, mirror model, binary cache, build command, community channels) live in `.lore-mod/config.md` in the workspace. `reference/lore-notes.md` is the filled example for EpicGames/lore.

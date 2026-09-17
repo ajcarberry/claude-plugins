@@ -21,7 +21,7 @@ Reference as sent: the maintainer's message of 2026-09-17 (`reference/eng-summar
 
 ## Before it goes out
 
-Dispatch `oss-triage:live-checker`, one per item, with the paragraph text. Each reports still accurate, changed, or partly changed with the exact phrase to fix. Apply fixes, then hand the file to the maintainer with HITL markers. On the first pass three of seven items needed corrections between drafting and sending.
+Dispatch `lore-mod:live-checker`, one per item, with the paragraph text. Each reports still accurate, changed, or partly changed with the exact phrase to fix. Apply fixes, then hand the file to the maintainer with HITL markers. On the first pass three of seven items needed corrections between drafting and sending.
 
 ## After it goes out
 

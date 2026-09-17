@@ -7,14 +7,14 @@ description: Repro discipline for validating a reported fix or behaviour: sessio
 
 ## Session setup, once
 
-- Pull the clone named in `.oss-triage/config.md`. Snapshot open issues with `scripts/fetch-issues.sh`.
+- Pull the clone named in `.lore-mod/config.md`. Snapshot open issues with `scripts/fetch-issues.sh`.
 - Tagged release binaries go under the cache dir, one folder per tag. Download on first need; keep them.
 - If any candidate fix is untagged, build `main` **once**, before dispatching agents, with the build command from the config; copy the binaries into `<cache>/main/` and write the short revision to `<cache>/main/REV`. Never compile per issue. The target directory persists, so the next session's rebuild is incremental.
 - Reporter kits and large downloads go under `<cache>/kits/<issue>/`, never inside the work directory. Leave a `KIT_LOCATION.txt` pointer in `repro/<n>/`.
 
 ## Dispatch
 
-Stage the issue (`scripts/stage-issue.sh <n>` writes `repro/<n>/issue.md` with body and all comments). Dispatch `oss-triage:issue-validator` with: the issue file, clone path, binary paths, the scope rule, the read-only rule, the reference reply layout, and the report format. Offline repositories (`lore repository create --offline`) need no server and do not collide; when a server is needed, only one validation at a time uses the ports.
+Stage the issue (`scripts/stage-issue.sh <n>` writes `repro/<n>/issue.md` with body and all comments). Dispatch `lore-mod:issue-validator` with: the issue file, clone path, binary paths, the scope rule, the read-only rule, the reference reply layout, and the report format. Offline repositories (`lore repository create --offline`) need no server and do not collide; when a server is needed, only one validation at a time uses the ports.
 
 ## Environment rules the validator must follow
 
