@@ -23,7 +23,7 @@ WT="$(dirname "$ROOT")/$(basename "$ROOT")--$LOWER"
 
 case "$CMD" in
   create)
-    SLUG=$(echo "${3:-change}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-40)
+    SLUG=$(echo "${3:-change}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-41 | sed -E 's/-[^-]*$//; s/-+$//')
     BRANCH="${PREFIX}${ID}-${SLUG}"
     if [ -d "$WT" ]; then echo "$WT"; exit 0; fi
     git -C "$ROOT" fetch -q "$REMOTE" "$BASE" 2>/dev/null || true

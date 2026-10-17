@@ -14,7 +14,7 @@ validator.
 | `ticket-verifier` | sonnet | recheck | `runs/<run>/verdict-<id>.json` |
 | `bug-investigator` | opus | investigate | `investigations/<id>.md`, `runs/<run>/result-<id>.json`, ticket worktree |
 | `feature-analyst` | opus | investigate | same as bug-investigator |
-| `change-reviewer` | opus | investigate (low tier) | `runs/<run>/review-<id>.json` |
+| `change-reviewer` | opus | investigate (low tier) | nothing — returns a verdict; the orchestrator records it with `ft review` |
 | `report-writer` | sonnet | report | `runs/<run>/report-<id>.json` |
 
 The orchestrator (main session) does dedup judgment, applies results, and decides

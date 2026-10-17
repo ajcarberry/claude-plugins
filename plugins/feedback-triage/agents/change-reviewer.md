@@ -15,8 +15,8 @@ than a reworked one.
 
 - `ticket`, `investigation`: absolute paths
 - `worktree` and `branch`; `base` branch
-- `out`: where the orchestrator will record your verdict (you return it; the
-  orchestrator writes it)
+
+You write nothing: return the verdict; the orchestrator records it.
 
 ## Check, in order
 

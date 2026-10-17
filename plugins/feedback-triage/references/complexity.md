@@ -8,7 +8,7 @@ Nobody re-litigates it downstream.
 |---|---|---|
 | **high** | triage + research: what is known, what is not, why it is high | 🧠 Needs eng |
 | **medium** | + root-cause (bug) or design (feature) research, **≥ 2 options** with trade-offs and one recommendation | 🧭 Options ready |
-| **low** | + branch, implementation, tests, independent review, change request | 🔧 PR ready |
+| **low** | + branch, implementation, tests, independent review, change request | 🔧 PR ready (🌿 Fix on branch when no PR is opened) |
 
 ## Classification rules
 
@@ -19,9 +19,11 @@ Check in order; the first match wins.
    deletion, public API/SDK contract changes, infrastructure/deploy config, a new
    hosted service or storage backend, anything that needs a product or
    pricing decision from more than one person.
-2. **Root cause unknown → high.** A bug you could not reproduce *and* could not
-   explain from code/logs after the time-box. (Not reproduced but explained from
-   code is fine — classify on the explanation.)
+2. **Cause unknown → high.** A reported problem you could not reproduce *and*
+   could not explain from code/logs after the time-box — bug, performance, or a
+   "make X faster/better" request alike. Re-framing it as a feature does not
+   escape this rule: nobody can build options for a problem nobody can see.
+   (Not reproduced but explained from code is fine — classify on the explanation.)
 3. **Low only if all hold:**
    - Bug: reproduced, with a failing check you can write. Feature: acceptance
      criteria are unambiguous from the request itself — no open product question.

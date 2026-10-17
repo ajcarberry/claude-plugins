@@ -32,7 +32,8 @@ field limits, examples). The short version:
   from the investigation file; if it isn't there, it doesn't go here.
 - **recommendation** — a command to the team, shaped by tier:
   high → where an engineer should start; medium → "Pick option A: …" + why;
-  low → "Review and merge the PR." + the one thing to check.
+  low → "Review and merge the PR." (or "the branch." when no PR was opened) +
+  the one thing to check. The template prints the link/branch; don't repeat it.
 - **ask** — optional, one decision only a human can make.
 
 ## Spiciness in prose

@@ -23,8 +23,9 @@ its style reference exactly.
 ## Steps
 
 1. Read the ticket and the investigation file. Note the tier, the repro outcome,
-   and whether `investigation.pr_url` exists. Low tier without a PR: recommend
-   reviewing the branch by name, never "the PR".
+   and whether `investigation.pr_url` exists. Low tier with a PR: "Review and
+   merge the PR." Low tier without one: "Review and merge the branch." The
+   template prints the PR link or branch name — never repeat it in prose.
 2. Draft the fields. Check each sentence against the limits **before** writing:
    headline ≤ 12 words, no end punctuation; other sentences ≤ 20 words; what and
    recommendation ≤ 2 sentences; 1–3 findings.

@@ -88,6 +88,14 @@ Config: `.claude/feedback-triage.json`. Queue: `.feedback-triage/` (configurable
   laptops, Routines, and CI share one queue without touching product branches.
 - `commit` — committed to the current branch. `none` — local files.
 
+## Install
+
+```
+/plugin install feedback-triage --marketplace ajcarberry/claude-plugins
+```
+
+Then run `/feedback-triage:setup` in the project whose feedback you want triaged.
+
 ## Requirements
 
 `python3` ≥ 3.8, `git`. GitHub: `gh` (authenticated) or the GitHub MCP server.

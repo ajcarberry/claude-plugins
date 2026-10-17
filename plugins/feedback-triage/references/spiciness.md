@@ -38,6 +38,8 @@ Emoji and labels live in `templates/slack/theme.json` (project override:
 - A deterministic bug reaches **everyone** who uses the affected flow — score the
   flow (core → 3, secondary → 2), not the number of people who reported it.
   Reporter count is momentum, already counted.
+- A failure that needs an **uncommon trigger** (power loss, a race, a rare config)
+  scores the users who meet the trigger: a core flow with a rare trigger → 2.
 - Unknown reach → score what you can show (usually 1) and say so in the
   findings. Never round up to be safe — the floor already protects the
   catastrophic cases.
