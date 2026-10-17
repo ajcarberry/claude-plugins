@@ -12,8 +12,8 @@ context. The plugins themselves are the source of truth — there is no separate
 design doc to keep in sync (the v4 design rationale lives in git history and the
 PR record).
 
-Four plugins, each useful alone; launchpad is the only one that calls the others,
-always optionally with a stated fallback:
+Five plugins, each useful alone; launchpad is the only one that calls the others,
+always optionally with a stated fallback (feedback-triage is fully self-contained):
 
 - **launchpad** (`plugins/launchpad/`) — dev lifecycle: `/stage` (worktree + brief
   + stakes) → `/mission-plan` (spec + work packets, optional) → `/launch`
@@ -28,11 +28,18 @@ always optionally with a stated fallback:
 - **commit** (`plugins/commit/`) — `/commit` plus `commit-conventions` (atomicity,
   message-style override order).
 
+- **feedback-triage** (`plugins/feedback-triage/`) — feedback pipeline: `/intake`
+  (GitHub + Slack → deduplicated queue) → `/investigate` (per-ticket subagents,
+  complexity-gated: findings / options / reviewed PR) → `/report` (templated
+  Slack, spiciness); `/recheck` runs out of band on a loop; `/sweep` runs all.
+  `scripts/ft.py` is the only queue writer; `tests/` unit-tests it, `evals/`
+  scores headless runs against a fixture product.
+
 `global/` holds the ~40-line global CLAUDE.md baseline and its installer.
 
 ## Architecture
 
-Top-level `.claude-plugin/marketplace.json` registers all four.
+Top-level `.claude-plugin/marketplace.json` registers all five.
 
 ### Key design rules
 
@@ -77,4 +84,5 @@ Helper plugins for this work (enable in `.claude/settings.json`): `plugin-dev`,
 CI validates frontmatter (`.github/scripts/validate-frontmatter.ts`): commands and
 skills must have a `description`; run
 `bun .github/scripts/validate-frontmatter.ts plugins/` before committing plugin
-file changes.
+file changes. feedback-triage changes also run
+`python3 -m unittest discover -s plugins/feedback-triage/tests` (CI does too).

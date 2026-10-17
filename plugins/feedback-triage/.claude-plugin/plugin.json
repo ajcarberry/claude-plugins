@@ -1,0 +1,9 @@
+{
+  "name": "feedback-triage",
+  "version": "1.0.0",
+  "description": "Feedback to engineering, hands-off — /intake GitHub issues + Slack into a deduplicated ticket queue, /recheck tracked tickets on a loop, /investigate with complexity-gated subagents (repro, options, or a reviewed PR), /report to Slack with templated spiciness-rated messages.",
+  "author": {
+    "name": "Alex Carberry"
+  },
+  "keywords": ["feedback", "triage", "bug-reports", "feature-requests", "slack", "github-issues"]
+}

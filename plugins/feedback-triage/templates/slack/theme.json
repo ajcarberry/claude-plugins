@@ -1,0 +1,37 @@
+{
+  "spice": {
+    "1": { "emoji": "🌶️", "label": "Mild" },
+    "2": { "emoji": "🌶️🌶️", "label": "Medium" },
+    "3": { "emoji": "🌶️🌶️🌶️", "label": "Hot" },
+    "4": { "emoji": "🌶️🌶️🌶️🌶️", "label": "Inferno" }
+  },
+  "type": {
+    "bug": { "emoji": "🐛", "label": "Bug" },
+    "feature": { "emoji": "✨", "label": "Feature" }
+  },
+  "tier": {
+    "high": { "emoji": "🧠", "label": "Needs eng" },
+    "medium": { "emoji": "🧭", "label": "Options ready" },
+    "low": { "emoji": "🔧", "label": "PR ready" }
+  },
+  "repro": {
+    "reproduced": "✅ Repro'd",
+    "partial": "🟡 Partly repro'd",
+    "not-reproduced": "❌ No repro",
+    "not-attempted": "⏸️ Repro not tried"
+  },
+  "source": { "github": "🐙", "slack": "💬", "other": "📎" },
+  "labels": {
+    "what": "What:",
+    "found": "Found:",
+    "do": "Do:",
+    "ask": "Ask:",
+    "raised": "raised",
+    "pr": "Review the PR",
+    "thread": "Details in thread"
+  },
+  "pr": "👉",
+  "digest": "📋",
+  "closed": "✅",
+  "thread": "🧵"
+}

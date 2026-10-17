@@ -1,0 +1,258 @@
+"""Tests for scripts/ft.py and the hook scripts. Run: python3 -m unittest discover -s tests"""
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+FT = os.path.join(ROOT, "scripts", "ft.py")
+HOOK = os.path.join(ROOT, "scripts", "hook.py")
+
+
+class Env:
+    def __init__(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = self.tmp.name
+        os.makedirs(os.path.join(self.dir, ".claude"))
+        with open(os.path.join(self.dir, ".claude", "feedback-triage.json"), "w") as f:
+            json.dump({"state": {"persist": "none"}, "report": {"channel": "#eng"}}, f)
+
+    def close(self):
+        self.tmp.cleanup()
+
+    def run(self, *args, stdin=None, ok=True):
+        p = subprocess.run([sys.executable, FT, *args], input=stdin, capture_output=True, text=True,
+                           env={**os.environ, "FT_PROJECT_DIR": self.dir})
+        if ok and p.returncode != 0:
+            raise AssertionError(f"ft {' '.join(args)} failed ({p.returncode}): {p.stderr}{p.stdout}")
+        return p
+
+    def j(self, *args, **kw):
+        return json.loads(self.run(*args, **kw).stdout)
+
+    def hook(self, payload):
+        return subprocess.run([sys.executable, HOOK], input=json.dumps({"cwd": self.dir, **payload}),
+                              capture_output=True, text=True, env={**os.environ, "FT_PROJECT_DIR": self.dir})
+
+
+def cand(ref, title="Login fails after SSO timeout", typ="bug", **extra):
+    url = f"https://github.com/acme/app/issues/{ref}" if isinstance(ref, int) else ref
+    return json.dumps({"type": typ, "title": title, "summary": "Users see a 500 after the SSO session expires.",
+                       "source": {"url": url, "author": extra.pop("author", "dana"),
+                                  "excerpt": extra.pop("excerpt", "500 on login"), "raised_at": "2026-10-01T10:00:00Z"},
+                       **extra})
+
+
+GOOD_REPORT = {
+    "headline": "Login returns 500 after the SSO session expires",
+    "what": "Users who stay idle for one hour cannot log in again. They see a server error.",
+    "findings": ["The token refresh code does not handle an expired refresh token.",
+                 "We reproduced it on version 2.4.1 with a failing test."],
+    "recommendation": "Catch the expired token and send the user to the SSO login page.",
+}
+
+
+class Intake(unittest.TestCase):
+    def setUp(self):
+        self.e = Env()
+        self.addCleanup(self.e.close)
+        self.e.run("init")
+
+    def test_create_then_idempotent(self):
+        a = self.e.j("upsert", "--json", cand(12))
+        self.assertEqual(a["action"], "created")
+        b = self.e.j("upsert", "--json", cand(12))
+        self.assertEqual((b["action"], b["id"]), ("exists", a["id"]))
+        # URL and short ref normalise to the same ledger key
+        c = self.e.j("upsert", "--json", json.dumps({"type": "bug", "title": "x", "summary": "y",
+                                                     "source": {"ref": "ACME/App#12", "url": "u"}}))
+        self.assertEqual(c["action"], "exists")
+
+    def test_cross_link_from_excerpt(self):
+        a = self.e.j("upsert", "--json", cand(12))
+        slack = "https://acme.slack.com/archives/C01ABC/p1700000000000100"
+        b = self.e.j("upsert", "--json", cand(slack, excerpt="same as https://github.com/acme/app/issues/12 for me",
+                                              author="lee"))
+        self.assertEqual((b["action"], b["id"]), ("linked", a["id"]))
+        t = self.e.j("get", a["id"])
+        self.assertEqual([s["relation"] for s in t["sources"]], ["original", "mention"])
+        self.assertEqual(t["sources"][1]["ref"], "slack:C01ABC/1700000000.000100")
+
+    def test_duplicate_of_and_merge(self):
+        a = self.e.j("upsert", "--json", cand(12))
+        b = self.e.j("upsert", "--json", cand(13, author="kim"))
+        self.assertEqual(b["action"], "created")
+        c = self.e.j("upsert", "--json", cand(14, duplicate_of=a["id"], duplicate_reason="same stack trace"))
+        self.assertEqual(c["action"], "linked")
+        self.e.j("merge", b["id"], a["id"], "--reason", "same root cause")
+        t = self.e.j("get", a["id"])
+        self.assertEqual(len(t["sources"]), 3)
+        self.assertEqual(self.e.j("get", b["id"])["status"], "duplicate")
+        # the merged-away source now resolves to the surviving ticket
+        self.assertEqual(self.e.j("upsert", "--json", cand(13))["id"], a["id"])
+        self.assertTrue(self.e.j("validate")["ok"])
+
+    def test_ignore(self):
+        self.e.j("ignore", "--ref", "acme/app#99", "--reason", "question, answered")
+        self.assertEqual(self.e.j("upsert", "--json", cand(99))["action"], "ignored")
+
+    def test_watermark_monotonic(self):
+        self.e.j("watermark", "set", "github:acme/app", "2026-10-02T00:00:00Z")
+        p = self.e.run("watermark", "set", "github:acme/app", "2026-10-01T00:00:00Z", ok=False)
+        self.assertEqual(p.returncode, 2)
+
+    def test_search(self):
+        a = self.e.j("upsert", "--json", cand(12))
+        hits = self.e.j("search", "sso", "login", "timeout", "error")
+        self.assertEqual(hits[0]["id"], a["id"])
+
+    def test_bad_candidate(self):
+        p = self.e.run("upsert", "--json", json.dumps({"type": "bug", "title": "", "summary": "s",
+                                                       "source": {"url": "https://github.com/a/b/issues/1"}}), ok=False)
+        self.assertEqual(p.returncode, 1)
+
+
+class Lifecycle(unittest.TestCase):
+    def setUp(self):
+        self.e = Env()
+        self.addCleanup(self.e.close)
+        self.e.run("init")
+        self.id = self.e.j("upsert", "--json", cand(12))["id"]
+        inv = os.path.join(self.e.dir, ".feedback-triage", "investigations", f"{self.id}.md")
+        with open(inv, "w") as f:
+            f.write("# findings\n")
+        self.inv = os.path.relpath(inv, self.e.dir)
+
+    def investigate(self, tier="medium", **extra):
+        self.assertEqual(self.e.j("claim")["claimed"][0]["id"], self.id)
+        res = {"id": self.id, "status": "DONE", "complexity": {"tier": tier, "rationale": "one module"},
+               "impact": 2, "reach": 2, "repro": "reproduced", "investigation_file": self.inv,
+               "options_count": 2, **extra}
+        return self.e.j("investigated", "--json", json.dumps(res))
+
+    def test_illegal_transition_blocked(self):
+        p = self.e.run("investigated", "--json", json.dumps({"id": self.id}), ok=False)
+        self.assertEqual(p.returncode, 2)
+
+    def test_medium_needs_options(self):
+        self.e.j("claim")
+        res = {"id": self.id, "complexity": {"tier": "medium", "rationale": "r"}, "impact": 1, "reach": 1,
+               "repro": "reproduced", "investigation_file": self.inv, "options_count": 1}
+        self.assertEqual(self.e.run("investigated", "--json", json.dumps(res), ok=False).returncode, 1)
+
+    def test_full_medium_flow_and_report(self):
+        r = self.investigate()
+        self.assertEqual(r["spice"], 2)  # 2*2 + 2 + 0 + 0 = 6
+        bad = dict(GOOD_REPORT, what="We basically just leverage the token. It is very robust 🔥.")
+        self.assertEqual(self.e.run("report-set", self.id, "--json", json.dumps(bad), ok=False).returncode, 2)
+        self.e.j("report-set", self.id, "--json", json.dumps(GOOD_REPORT))
+        out = self.e.j("render")
+        ticket = next(f for f in out["files"] if f["kind"] == "ticket")
+        text = open(os.path.join(self.e.dir, ticket["file"])).read()
+        self.assertIn("🌶️🌶️ *FT-0001 · Login returns 500", text)
+        self.assertIn("🧭 Options ready", text)
+        self.assertIn("✅ Repro'd", text)
+        self.assertIn("*Do:* Catch the expired token", text)
+        self.assertNotIn("{{", text)
+        self.assertNotIn("Ask:", text)  # empty optional line dropped
+        for f in out["files"]:
+            self.e.j("sent", out["run"], "--file", f["file"], "--permalink", "https://slack/x")
+        self.assertEqual(self.e.j("get", self.id)["status"], "reported")
+        self.assertEqual(self.e.j("due", "report"), [])  # unchanged → not re-reported
+
+    def test_low_tier_gate(self):
+        self.investigate(tier="low", branch="ft/FT-0001-sso-refresh")
+        hook = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                "tool_input": {"command": "gh pr create --head ft/FT-0001-sso-refresh --title x"}}
+        self.assertEqual(self.e.hook(hook).returncode, 2)  # review pending
+        self.assertEqual(self.e.run("pr", self.id, "--url", "https://x", ok=False).returncode, 2)
+        self.e.j("review", self.id, "--verdict", "approved", "--notes", "tests cover it")
+        self.assertEqual(self.e.hook(hook).returncode, 0)
+        self.e.j("pr", self.id, "--url", "https://github.com/acme/app/pull/7")
+        self.assertEqual(self.e.j("get", self.id)["spiciness"]["factors"]["readiness"], 1)
+        mcp = {"hook_event_name": "PreToolUse", "tool_name": "mcp__github__create_pull_request",
+               "tool_input": {"head": "ft/FT-0001-sso-refresh"}}
+        self.assertEqual(self.e.hook(mcp).returncode, 0)
+
+    def test_medium_branch_cannot_pr(self):
+        self.investigate()
+        hook = {"hook_event_name": "PreToolUse", "tool_name": "mcp__github__create_pull_request",
+                "tool_input": {"head": "ft/FT-0001-try"}}
+        p = self.e.hook(hook)
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("only low-complexity", p.stderr)
+
+    def test_recheck_only_existing_and_allowed_keys(self):
+        self.investigate()
+        p = self.e.run("recheck-apply", "--json", json.dumps({"id": "FT-0099", "verdict": "confirmed",
+                                                               "evidence": ["x"]}), ok=False)
+        self.assertEqual(p.returncode, 1)
+        p = self.e.run("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "corrected",
+                                                               "patch": {"status": "resolved"}, "evidence": ["x"]}), ok=False)
+        self.assertEqual(p.returncode, 2)
+        r = self.e.j("recheck-apply", "--json", json.dumps({
+            "id": self.id, "verdict": "resolved", "evidence": ["acme/app#12 closed by PR #40"],
+            "upstream": {"states": {"github:acme/app#12": "closed"}, "fixed_by": "https://github.com/acme/app/pull/40"}}))
+        self.assertEqual(r["status"], "resolved")
+        self.assertEqual(self.e.j("due", "recheck", "--min-age-hours", "1"), [])
+
+    def test_resolved_is_announced_once(self):
+        self.investigate()
+        self.e.j("report-set", self.id, "--json", json.dumps(GOOD_REPORT))
+        out = self.e.j("render")
+        for f in out["files"]:
+            self.e.j("sent", out["run"], "--file", f["file"])
+        self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "resolved",
+                                                        "evidence": ["closed by PR #40"]}))
+        out = self.e.j("render")
+        self.assertEqual([f["kind"] for f in out["files"]], ["digest"])
+        digest = open(os.path.join(self.e.dir, out["files"][0]["file"])).read()
+        self.assertIn("✅ FT-0001", digest)
+        self.e.j("sent", out["run"], "--file", out["files"][0]["file"])
+        self.assertIsNone(self.e.j("render")["run"])
+
+    def test_reinvestigation_marks_report_stale(self):
+        self.investigate()
+        self.e.j("report-set", self.id, "--json", json.dumps(GOOD_REPORT))
+        self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "needs-reinvestigation",
+                                                        "evidence": ["new repro on 2.5"]}))
+        self.investigate()
+        self.assertEqual(self.e.j("due", "report"), [])
+        self.assertEqual(self.e.j("due", "report-writing"), [self.id])
+
+    def test_momentum_from_reporters(self):
+        self.investigate()
+        for n, who in ((20, "a"), (21, "b"), (22, "c")):
+            self.e.j("upsert", "--json", cand(n, duplicate_of=self.id, author=who))
+        t = self.e.j("get", self.id)
+        self.assertEqual(t["spiciness"]["factors"]["momentum"], 2)  # 4 distinct reporters
+        self.assertEqual(t["spiciness"]["level"], 3)
+
+
+class Hooks(unittest.TestCase):
+    def setUp(self):
+        self.e = Env()
+        self.addCleanup(self.e.close)
+        self.e.run("init")
+
+    def test_direct_queue_edit_blocked(self):
+        p = self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Write",
+                         "tool_input": {"file_path": os.path.join(self.e.dir, ".feedback-triage", "queue", "FT-0001.json")}})
+        self.assertEqual(p.returncode, 2)
+        p = self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Write",
+                         "tool_input": {"file_path": os.path.join(self.e.dir, ".feedback-triage", "investigations", "FT-0001.md")}})
+        self.assertEqual(p.returncode, 0)
+
+    def test_slack_report_must_come_from_outbox(self):
+        payload = {"hook_event_name": "PreToolUse", "tool_name": "mcp__slack__slack_send_message",
+                   "tool_input": {"channel_id": "C1", "text": "🌶️ *FT-0001 · hand written*"}}
+        self.assertEqual(self.e.hook(payload).returncode, 2)
+        payload["tool_input"]["text"] = "lunch at noon?"
+        self.assertEqual(self.e.hook(payload).returncode, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

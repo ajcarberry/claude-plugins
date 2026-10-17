@@ -1,0 +1,151 @@
+[
+ {
+  "number": 1,
+  "title": "CSV export is missing my last task",
+  "body": "I ran `tasklite export > tasks.csv` and the newest task is not in the file. I have 12 tasks and the CSV has 11 rows. Version 2.4.1 on macOS.",
+  "author": {
+   "login": "dana-k"
+  },
+  "createdAt": "2026-10-01T09:12:00Z",
+  "updatedAt": "2026-10-01T09:12:00Z",
+  "labels": [
+   {
+    "name": "bug"
+   }
+  ],
+  "state": "OPEN",
+  "stateReason": null,
+  "url": "https://github.com/acme/tasklite/issues/1",
+  "comments": [
+   {
+    "author": {
+     "login": "tomasz"
+    },
+    "body": "Same on Linux, 2.4.1. Always the last one.",
+    "createdAt": "2026-10-01T15:40:00Z"
+   }
+  ]
+ },
+ {
+  "number": 2,
+  "title": "Add --json flag to list",
+  "body": "Feature request: `tasklite list --json` so I can pipe into jq in my CI scripts. Parsing the [ ] boxes is fragile.",
+  "author": {
+   "login": "ci-wrangler"
+  },
+  "createdAt": "2026-10-02T11:00:00Z",
+  "updatedAt": "2026-10-02T11:00:00Z",
+  "labels": [
+   {
+    "name": "enhancement"
+   }
+  ],
+  "state": "OPEN",
+  "stateReason": null,
+  "url": "https://github.com/acme/tasklite/issues/2",
+  "comments": []
+ },
+ {
+  "number": 3,
+  "title": "Due date 'tomorrow' is wrong in the evening",
+  "body": "I'm in California (UTC-7). At 6pm I add a task with --due tomorrow and it shows the day after tomorrow. In the morning it's fine.",
+  "author": {
+   "login": "westcoast-sam"
+  },
+  "createdAt": "2026-10-03T02:30:00Z",
+  "updatedAt": "2026-10-03T02:30:00Z",
+  "labels": [
+   {
+    "name": "bug"
+   }
+  ],
+  "state": "OPEN",
+  "stateReason": null,
+  "url": "https://github.com/acme/tasklite/issues/3",
+  "comments": []
+ },
+ {
+  "number": 4,
+  "title": "Export takes 40 seconds with 10k tasks",
+  "body": "I have about 10,000 tasks (imported from another tool). `tasklite export` takes ~40s. Smaller lists are instant.",
+  "author": {
+   "login": "bulk-bob"
+  },
+  "createdAt": "2026-10-04T08:00:00Z",
+  "updatedAt": "2026-10-04T08:00:00Z",
+  "labels": [],
+  "state": "OPEN",
+  "stateReason": null,
+  "url": "https://github.com/acme/tasklite/issues/4",
+  "comments": []
+ },
+ {
+  "number": 5,
+  "title": "Recurring tasks",
+  "body": "Would love tasks that repeat \u2014 e.g. 'water plants every Monday'. Right now I re-add them by hand every week. Should handle daily/weekly/monthly at least.",
+  "author": {
+   "login": "plant-person"
+  },
+  "createdAt": "2026-10-05T10:00:00Z",
+  "updatedAt": "2026-10-05T10:00:00Z",
+  "labels": [
+   {
+    "name": "enhancement"
+   }
+  ],
+  "state": "OPEN",
+  "stateReason": null,
+  "url": "https://github.com/acme/tasklite/issues/5",
+  "comments": [
+   {
+    "author": {
+     "login": "dana-k"
+    },
+    "body": "+1, weekly standup notes for me",
+    "createdAt": "2026-10-06T09:00:00Z"
+   }
+  ]
+ },
+ {
+  "number": 7,
+  "title": "Typo in help text: 'tasklite lsit'",
+  "body": "The help says lsit instead of list.",
+  "author": {
+   "login": "pedant"
+  },
+  "createdAt": "2026-09-20T10:00:00Z",
+  "updatedAt": "2026-09-20T10:00:00Z",
+  "labels": [],
+  "state": "CLOSED",
+  "stateReason": "COMPLETED",
+  "url": "https://github.com/acme/tasklite/issues/7",
+  "comments": [
+   {
+    "author": {
+     "login": "maintainer"
+    },
+    "body": "Fixed in 2.4.1, thanks!",
+    "createdAt": "2026-09-21T10:00:00Z"
+   }
+  ]
+ },
+ {
+  "number": 8,
+  "title": "Lost all my tasks after laptop crashed",
+  "body": "My laptop ran out of battery while I was adding a task. After reboot ~/.tasklite.json was empty (0 bytes) and every task was gone. 200+ tasks. Please make saving safer.",
+  "author": {
+   "login": "sad-user"
+  },
+  "createdAt": "2026-10-06T19:00:00Z",
+  "updatedAt": "2026-10-06T19:00:00Z",
+  "labels": [
+   {
+    "name": "bug"
+   }
+  ],
+  "state": "OPEN",
+  "stateReason": null,
+  "url": "https://github.com/acme/tasklite/issues/8",
+  "comments": []
+ }
+]

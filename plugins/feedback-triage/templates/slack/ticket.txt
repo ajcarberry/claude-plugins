@@ -1,0 +1,11 @@
+{{! One message per ticket. Rendered by ft.py render — never hand-written. }}
+{{! A line drops out when all its placeholders are empty; {{x[]}} repeats per item. }}
+{{spice_emoji}} *{{id}} · {{headline}}*
+{{type_emoji}} {{type_label}} · {{tier_emoji}} {{tier_label}} · {{spice_label}} · {{raised}} {{repro}}
+*{{label_what}}* {{what}}
+*{{label_found}}*
+• {{findings[]}}
+{{rec_line}}
+{{ask_line}}
+{{pr}}
+{{sources}}

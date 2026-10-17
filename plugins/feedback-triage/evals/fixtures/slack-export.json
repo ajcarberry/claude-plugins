@@ -1,0 +1,89 @@
+{
+ "channel": {
+  "id": "C0FEEDBK",
+  "name": "product-feedback"
+ },
+ "messages": [
+  {
+   "ts": "1790848800.000100",
+   "user": "priya",
+   "text": "export to csv keeps dropping a task?? I exported for my weekly review and the last thing I added isn't there",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1790848800000100"
+  },
+  {
+   "ts": "1790849100.000200",
+   "user": "jon",
+   "text": "same here, noticed it yesterday",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1790849100000200?thread_ts=1790848800.000100&cid=C0FEEDBK",
+   "thread_ts": "1790848800.000100"
+  },
+  {
+   "ts": "1790849400.000300",
+   "user": "li",
+   "text": "+1",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1790849400000300?thread_ts=1790848800.000100&cid=C0FEEDBK",
+   "thread_ts": "1790848800.000100"
+  },
+  {
+   "ts": "1790936000.000100",
+   "user": "marcus",
+   "text": "is this the same as https://github.com/acme/tasklite/issues/1 ? my export has one row fewer than `tasklite list --all`",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1790936000000100"
+  },
+  {
+   "ts": "1791016000.000100",
+   "user": "eve",
+   "text": "anyone else seeing due dates off by a day? I set 'tomorrow' last night (I'm in Denver) and it says the 8th instead of the 7th",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1791016000000100"
+  },
+  {
+   "ts": "1791026000.000100",
+   "user": "ravi",
+   "text": "would be great if the list output were machine readable. parsing it in our CI is painful",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1791026000000100"
+  },
+  {
+   "ts": "1791036000.000100",
+   "user": "noor",
+   "text": "how do I export? the csv I get is missing my newest task",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1791036000000100"
+  },
+  {
+   "ts": "1791046000.000100",
+   "user": "kai",
+   "text": "two things: list --json would be awesome, and also `tasklite done 99` crashes with a KeyError traceback when the id doesn't exist",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1791046000000100"
+  },
+  {
+   "ts": "1791056000.000100",
+   "user": "gabe",
+   "text": "Please add sync across my laptop and phone \u2014 or at least cloud backup. I use tasklite on 3 machines and copy the json file around by hand.",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1791056000000100"
+  },
+  {
+   "ts": "1791066000.000100",
+   "user": "zoe",
+   "text": "thanks for the 2.4.1 release, the new help text is much better!",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1791066000000100"
+  },
+  {
+   "ts": "1791076000.000100",
+   "user": "amir",
+   "text": "how do I mark a task as finished?",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1791076000000100"
+  },
+  {
+   "ts": "1791076100.000200",
+   "user": "maintainer",
+   "text": "`tasklite done <id>`",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1791076100000200?thread_ts=1791076000.000100&cid=C0FEEDBK",
+   "thread_ts": "1791076000.000100"
+  },
+  {
+   "ts": "1791086000.000100",
+   "user": "deploybot",
+   "text": "Deploy finished: tasklite-docs v2.4.1 \u2192 production",
+   "permalink": "https://acme.slack.com/archives/C0FEEDBK/p1791086000000100"
+  }
+ ]
+}

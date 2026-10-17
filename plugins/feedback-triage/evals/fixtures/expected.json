@@ -1,0 +1,102 @@
+{
+ "groups": {
+  "B1-export-drops-last": {
+   "type": "bug",
+   "refs": [
+    "github:acme/tasklite#1",
+    "slack:C0FEEDBK/1790848800.000100",
+    "slack:C0FEEDBK/1790936000.000100",
+    "slack:C0FEEDBK/1791036000.000100"
+   ],
+   "tiers": [
+    "low"
+   ],
+   "min_reporters": 6
+  },
+  "B2-tomorrow-timezone": {
+   "type": "bug",
+   "refs": [
+    "github:acme/tasklite#3",
+    "slack:C0FEEDBK/1791016000.000100"
+   ],
+   "tiers": [
+    "medium",
+    "low"
+   ]
+  },
+  "B3-data-loss-crash": {
+   "type": "bug",
+   "refs": [
+    "github:acme/tasklite#8"
+   ],
+   "tiers": [
+    "low",
+    "medium"
+   ],
+   "min_spice": 3
+  },
+  "B4-done-missing-id": {
+   "type": "bug",
+   "refs": [
+    "slack:C0FEEDBK/1791046000.000100~2"
+   ],
+   "alt_refs": [
+    "slack:C0FEEDBK/1791046000.000100"
+   ],
+   "tiers": [
+    "low"
+   ]
+  },
+  "F1-list-json": {
+   "type": "feature",
+   "refs": [
+    "github:acme/tasklite#2",
+    "slack:C0FEEDBK/1791026000.000100",
+    "slack:C0FEEDBK/1791046000.000100"
+   ],
+   "alt_refs": [
+    "slack:C0FEEDBK/1791046000.000100~2"
+   ],
+   "tiers": [
+    "low"
+   ]
+  },
+  "F2-sync": {
+   "type": "feature",
+   "refs": [
+    "slack:C0FEEDBK/1791056000.000100"
+   ],
+   "tiers": [
+    "high"
+   ]
+  },
+  "F3-recurring": {
+   "type": "feature",
+   "refs": [
+    "github:acme/tasklite#5"
+   ],
+   "tiers": [
+    "medium",
+    "high"
+   ]
+  },
+  "X4-export-slow": {
+   "type": "any",
+   "refs": [
+    "github:acme/tasklite#4"
+   ],
+   "tiers": [
+    "medium",
+    "high",
+    "low"
+   ]
+  }
+ },
+ "ignored": [
+  "github:acme/tasklite#7",
+  "slack:C0FEEDBK/1791066000.000100",
+  "slack:C0FEEDBK/1791076000.000100",
+  "slack:C0FEEDBK/1791086000.000100"
+ ],
+ "split": "slack:C0FEEDBK/1791046000.000100"
+}

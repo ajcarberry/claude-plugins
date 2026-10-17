@@ -1,0 +1,5 @@
+{{! Top-level digest. Ticket messages go in its thread (report.mode = thread). }}
+{{digest_emoji}} *Feedback triage · {{date}}* · {{count}} {{noun}}
+{{lines[]}}
+{{closed[]}}
+{{thread_line}}
