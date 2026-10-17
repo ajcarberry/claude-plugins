@@ -112,6 +112,17 @@ paste-ready text — nothing is posted automatically.
 cron running `/feedback-triage:sweep` for the team. See
 [scheduling.md](references/scheduling.md).
 
+## Known limits
+
+- **One writer at a time per queue.** `state.persist: branch` merges by git
+  rebase. Overlapping runners (e.g. a CI recheck during a laptop investigate) can
+  conflict; `state.sh` then keeps the losing run on a pushed backup branch and
+  stops, but recovering an interrupted *investigate* (claims, opened PRs) needs a
+  human. Schedule phases so they don't overlap.
+- `ft/` branches that are not opened as PRs stay on the runner that built them.
+- Slack replies in threads older than the read window are not read; recheck's
+  "seen but untracked" URLs are printed, not queued.
+
 ## Development
 
 ```bash

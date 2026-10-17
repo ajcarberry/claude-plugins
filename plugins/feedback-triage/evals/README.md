@@ -4,7 +4,17 @@ Headless runs of the real commands against a fixture product, scored by scripts.
 The unit tests (`../tests/`) cover the deterministic layer; these cover the
 judgment layer.
 
-## Fixture
+## Scenarios
+
+**`realworld/`** — the real `python-humanize/humanize` repository at HEAD plus a
+snapshot of 10 of its real issues (bodies paraphrased by the fetch tool; titles,
+metadata, comments, and linked PRs exact) and a small Slack export whose messages
+are synthetic but describe behaviour verified on the real code. Real traps: most
+bugs already have fix PRs in flight (some competing, some broken), #400 is closed
+as a duplicate of a PR that is already merged, and the intword tickets (#356,
+#227) touch the same code. Set `HUMANIZE=<clone>` for `run.sh setup`.
+
+**`fixtures/`** — synthetic, fully known truth:
 
 - `fixtures/app/` — `tasklite`, a tiny Python CLI with planted defects: an
   off-by-one in CSV export, UTC-vs-local due dates, a non-atomic save that can
@@ -20,10 +30,12 @@ judgment layer.
 ## Running
 
 ```bash
-evals/run.sh setup /tmp/ft-e1          # fresh git project + config + empty queue
+SCENARIO=realworld evals/run.sh setup /tmp/ft-e1   # or fixtures (default)
 evals/run.sh intake /tmp/ft-e1         # → score_intake.py
 evals/run.sh investigate /tmp/ft-e1    # (--no-pr) → ft.py list
-evals/run.sh report /tmp/ft-e1         # (--dry-run) → score_reports.py
+evals/run.sh report /tmp/ft-e1         # → score_reports.py
+evals/analyze.py /tmp/ft-e1-<phase>-<ts>.jsonl    # cost, subagents, plugin files read
+evals/context_cost.py                  # static instruction tokens per actor
 evals/run.sh recheck /tmp/ft-e1        # (--all) → ft.py list
 evals/score_reports.py /tmp/ft-e1 /tmp/ft-e2 …   # cross-run agreement
 ```
@@ -49,26 +61,40 @@ fixture costs about $8 and takes about 30 minutes.
 
 ## Results log
 
-Runs on 2026-10-17. Each iteration changed skills/rubrics/scripts, then re-ran.
+### Round 1 — synthetic fixture only (6 runs)
 
-| Run | Change under test | Intake | Tiers ok | Lint | Notes |
-|---|---|---|---|---|---|
-| i1 | first draft | GitHub only | — | — | fixture bug (Slack dated 2025); orchestrator correctly refused out-of-window items |
-| i2, i3 | fixed fixture | perfect ×2; rerun of i2 created 0 | 6/8, 8/8 | 0 / 0 | agreement 5/8: sync scoped down to dodge the high list; JSON shape treated as an open product question; `claim --help` claimed the queue |
-| i3 recheck | upstream close + new comment + new untracked issue | — | — | — | fixed ticket resolved (merge commit cited), new info → reinvestigate, untracked issue not tracked, rest confirmed; unchanged-data control: all confirmed |
-| i4, i5 | rubric v2 (tier as asked; which open questions count; reach by flow); titles name capabilities | perfect ×2; identical F1 title | 8/8, 8/8 | 0 / 0 | sync and JSON now agree everywhere; unreproduced perf report reframed as a feature (medium vs high) |
-| i6 | rubric v3 (cause unknown → high covers perf/"faster" requests; rare-trigger reach); no-PR rendering | perfect | 8/8 | 0 / 0 | perf → high; CSV bug spice consistent; "Do:" lines uniform |
+Intake reached perfect scores from the second run; tier accuracy went 6/8 → 8/8
+across three rubric revisions (scope-down loophole, which open questions count,
+"cause unknown → high" for performance reports, reach by affected flow).
 
-Remaining variance is in the genuinely borderline case: the atomic-save fix
-(B3) lands low or medium depending on whether the investigator judges the file
-mode/symlink change as user-visible. Both are acceptable, and medium is the
-rubric's tiebreak.
+### Round 2 — real-world scenario, adversarial review + fact-check every iteration (max 3)
 
-Bugs the evals and the tests found in the deterministic layer: `--help` acting
-as a real command, `git -C <dir> push` bypassing the PR gate, `state.sh`
-resolving the git dir from the caller's cwd, outbox run-id collisions,
-reinvestigated tickets reusing stale report prose.
+Each iteration: change → full headless run on real humanize issues (+ fixture as a
+regression guard) → a fresh-context reviewer attacks the plugin → an independent
+fact-checker re-runs every claim in the reports against the real code and PRs.
 
-Not covered here: live Slack/GitHub APIs (the fixture uses exports), PR creation
-against a real remote (`--no-pr`), and Slack delivery (`--dry-run`). The hook and
-`ft.py` paths for those are unit-tested.
+| | Baseline | Iteration 1 | Iteration 2 | Iteration 3 |
+|---|---|---|---|---|
+| Intake dedup precision / recall (real) | 0.67 / 0.67 | 1.0 / 1.0 | 1.0 / 1.0 | 1.0 / 1.0 |
+| Report claims checked / wrong | 47 / 3 | ~54 / 6 | 60 / 2 (+1 imprecise) | 68 / 1 |
+| Misleading tickets | 2 | 1 + 1 partly | 1 + 1 mildly | 0 on facts; 1 CTA (links a PR the text says to close) |
+| Duplicate fix branches built over open upstream PRs | 4 (+3 recommended) | 0 | 0 | 0 |
+| Wrong PR attributions | 2 hidden | 3 | 2 (+1 missed) | 0 |
+| Tickets dropped from the report | 0 | 0 | 1 (capacity, unannounced) | 0 |
+| Reviewer: high-severity defects found | — | 7 | 3 | 1 |
+| Static instruction tokens (all actors) | 24.3k | 13.4k | 13.5k | 13.8k |
+| Cost: intake / investigate / report (real) | $0.95 / $10.71 / $1.19 | $0.80 / $9.23 / $1.62 | $0.71 / $9.37 / $1.39 | $0.73 / $9.16 / $1.38 |
+
+What moved the numbers: `duplicate_of` by the original's URL instead of a
+predicted ticket id (dedup); testing linked upstream PRs before building
+(duplicate work); `existing_pr` restricted to PRs the issue links, and lint
+refusing a recommendation that names a different PR than the rendered link (PR
+attribution); `fixed_on_base` plus a deeper fetch (merged fixes hidden by shallow
+clones); digest backlog line (silent drops).
+
+Remaining, by design decision rather than iteration: concurrent runners sharing
+the git-branch queue can still conflict in ways that lose a run's work (see the
+plugin README, "Known limits").
+
+Not covered: live Slack/GitHub APIs (sandbox blocks unattached repos' API; the
+reader's REST path is untested live), opening real PRs (`--no-pr`).
