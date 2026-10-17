@@ -35,7 +35,8 @@ ensure_branch_worktree() {
   if [ -e "$DIR/.git" ]; then return 0; fi
   # keep the worktree out of the product branch's status
   local exclude
-  exclude="$(git -C "$ROOT" rev-parse --git-common-dir)/info/exclude"
+  exclude="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)/info/exclude"
+  mkdir -p "$(dirname "$exclude")"
   local rel="${DIR#"$ROOT"/}/"
   grep -qxF "$rel" "$exclude" 2>/dev/null || echo "$rel" >> "$exclude"
   retry git -C "$ROOT" fetch "$REMOTE" "$BRANCH" >/dev/null 2>&1 || true

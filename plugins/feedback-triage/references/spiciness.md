@@ -10,7 +10,7 @@ facts always give the same pepper count.
 |---|---|---|---|---|---|
 | **impact** (bug) | cosmetic | annoying, workaround exists | a core flow fails, no workaround | data loss, security, outage, money | investigator |
 | **impact** (feature) | nice to have | quality-of-life | unblocks a real workflow | blocks adoption or a deal; strategic | investigator |
-| **reach** | one user | a few users / one account | a segment (a plan, a platform, a region) | most or all users | investigator |
+| **reach** | one user | a few users / one account | a segment (a plan, platform, region) **or** everyone using a secondary feature (export, settings, an integration) | most or all users, **or** everyone using a core flow (sign-in, create/edit, view) | investigator |
 | **momentum** | 1 reporter | 2–3 distinct reporters | 4+ distinct reporters | — | ft.py (authors + plus-ones across sources) |
 | **readiness** | — | low-tier change passed review | — | — | ft.py |
 
@@ -35,6 +35,9 @@ Emoji and labels live in `templates/slack/theme.json` (project override:
 
 - Score **evidence, not adjectives.** "URGENT!!!" in a report is not impact 3; a
   stack trace showing writes lost is.
+- A deterministic bug reaches **everyone** who uses the affected flow — score the
+  flow (core → 3, secondary → 2), not the number of people who reported it.
+  Reporter count is momentum, already counted.
 - Unknown reach → score what you can show (usually 1) and say so in the
   findings. Never round up to be safe — the floor already protects the
   catastrophic cases.

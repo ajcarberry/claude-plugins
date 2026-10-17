@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ft  # noqa: E402
 
 TICKET_ID = re.compile(r"\bFT-\d{4,}\b")
+PUSH_OR_PR = re.compile(r"gh\s+pr\s+create|\bgit\b(?:\s+-C\s+\S+)?\s+push\b")
 TEXT_KEYS = ("text", "message", "markdown_text", "content", "body")
 
 
@@ -62,11 +63,12 @@ def current_branch(cwd):
 
 
 def check_bash(st, cmd, cwd):
-    if "gh pr create" not in cmd and "git push" not in cmd:
+    if not PUSH_OR_PR.search(cmd):
         return
     prefix = re.escape(st.cfg["investigate"]["branch_prefix"])
     named = re.findall(rf"(?:^|[\s:=])({prefix}FT-\d{{4,}}[\w./-]*)", cmd, re.I)
-    branches = named or [current_branch(cwd)]
+    where = re.search(r"git\s+-C\s+(\S+)\s+push", cmd) or re.search(r"\bcd\s+(\S+)\s*(?:&&|;)", cmd)
+    branches = named or [current_branch(where.group(1).strip("'\"") if where else cwd)]
     for b in branches:
         gate_branch(st, b)
 
@@ -97,7 +99,7 @@ def main():
     ti = payload.get("tool_input") or {}
     cwd = payload.get("cwd") or os.getcwd()
     # fast path: most tool calls are none of our business
-    if tool == "Bash" and not re.search(r"gh pr create|git push", ti.get("command") or ""):
+    if tool == "Bash" and not PUSH_OR_PR.search(ti.get("command") or ""):
         return 0
     if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit") and not re.search(
             r"index\.json$|[/\\]queue[/\\]", ti.get("file_path") or ti.get("notebook_path") or ""):

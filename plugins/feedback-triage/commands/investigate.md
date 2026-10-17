@@ -52,7 +52,9 @@ the same component go one after another):
    or the GitHub MCP `create_pull_request`) against the base, draft if
    `investigate.draft_prs`, title `<ID>: <ticket title>`, body from
    [pr-body.md](../templates/pr-body.md) filled from the investigation. Then
-   `ft pr <ID> --url <url>` and `wt remove <ID>`. The hook blocks the push/PR if
+   `ft pr <ID> --url <url>` and `wt remove <ID>`. Not opening a PR (`--no-pr`,
+   `open_prs: false`, no write access) → `wt remove <ID>` (the branch stays local,
+   and the report shows the options, not a PR). The hook blocks the push/PR if
    the ticket is not low tier with an approved review — fix the state, never
    bypass.
 

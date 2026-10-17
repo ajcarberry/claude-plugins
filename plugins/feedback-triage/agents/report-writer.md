@@ -22,7 +22,9 @@ its style reference exactly.
 
 ## Steps
 
-1. Read the ticket and the investigation file. Note the tier and repro outcome.
+1. Read the ticket and the investigation file. Note the tier, the repro outcome,
+   and whether `investigation.pr_url` exists. Low tier without a PR: recommend
+   reviewing the branch by name, never "the PR".
 2. Draft the fields. Check each sentence against the limits **before** writing:
    headline ≤ 12 words, no end punctuation; other sentences ≤ 20 words; what and
    recommendation ≤ 2 sentences; 1–3 findings.

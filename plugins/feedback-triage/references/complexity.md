@@ -15,8 +15,9 @@ Nobody re-litigates it downstream.
 Check in order; the first match wins.
 
 1. **High list → high**, regardless of size: auth/permissions, payments/billing,
-   security or privacy, data migrations or deletion, public API/SDK contract
-   changes, infrastructure/deploy config, anything that needs a product or
+   security or privacy (incl. user data leaving the device), data migrations or
+   deletion, public API/SDK contract changes, infrastructure/deploy config, a new
+   hosted service or storage backend, anything that needs a product or
    pricing decision from more than one person.
 2. **Root cause unknown → high.** A bug you could not reproduce *and* could not
    explain from code/logs after the time-box. (Not reproduced but explained from
@@ -30,6 +31,15 @@ Check in order; the first match wins.
      environment.
    - No behaviour change for users who did not ask for it.
 4. **Otherwise medium.**
+
+**Classify the request as asked.** Tier the smallest version that solves the
+user's job — not a cheaper scope you would prefer. If that version is on the high
+list (a hosted service, data leaving the device, a migration), the ticket is
+high; your cheaper alternative goes in the findings as a suggestion.
+
+**Open questions count only if they change what gets built or for whom.** Details
+an engineer settles in code review with a conventional default — field names,
+flag spelling, JSON shape mirroring existing output — do not block low.
 
 **Between low and medium, choose medium.** A wrong "low" spends reviewer time on a
 PR nobody should merge; a wrong "medium" costs one engineer reading two options.

@@ -534,7 +534,7 @@ def fill(template, values):
         if all(not values.get(k) for k, _ in keys):
             continue
         out.append(fill_scalars(line, values))
-    return "\n".join(out).strip() + "\n"
+    return "\n".join(line.rstrip() for line in out).strip() + "\n"
 
 
 def fill_scalars(line, values):
@@ -564,8 +564,13 @@ def ticket_values(t, theme):
     if len(t["sources"]) > 4:
         links.append(f"+{len(t['sources']) - 4} more")
     effective_tier = tier
+    branch = ""
     if tier == "low" and not inv.get("pr_url"):
-        effective_tier = "medium"  # no change request yet: options, not a PR
+        if inv.get("review") == "approved" and inv.get("branch"):
+            effective_tier = "low_branch"  # reviewed fix exists, no change request opened
+            branch = f"{theme['tier']['low_branch']['emoji']} `{inv['branch']}`"
+        else:
+            effective_tier = "medium"
     pr = slack_link(inv["pr_url"], f"{theme['pr']} {theme['labels']['pr']}") if inv.get("pr_url") else ""
     repro = ""
     if t["type"] == "bug" and inv.get("repro") in theme.get("repro", {}):
@@ -586,6 +591,7 @@ def ticket_values(t, theme):
         "recommendation": rep.get("recommendation") or "",
         "ask": rep.get("ask") or "",
         "pr": pr,
+        "branch": branch,
         "sources": " · ".join(links),
         "label_what": theme["labels"]["what"],
         "label_found": theme["labels"]["found"],
@@ -1092,8 +1098,8 @@ def due_reports(st):
         if (t["spiciness"] or {}).get("level", 0) < min_level:
             continue
         inv = t.get("investigation") or {}
-        if t["complexity"]["tier"] == "low" and inv.get("review") == "pending":
-            continue  # wait for the reviewer verdict
+        if t["complexity"]["tier"] == "low" and inv.get("review") in ("pending", "changes"):
+            continue  # wait for the reviewer verdict / the revision
         if (t.get("reported") or {}).get("hash") == report_hash(t):
             continue
         out.append(t)
@@ -1109,7 +1115,7 @@ def cmd_due(args, st):
     elif kind == "report-writing":
         emit([t["id"] for t in st.all() if t["status"] in REPORTABLE and
               (not t.get("report") or t["report"].get("_stale"))
-              and not (t["complexity"]["tier"] == "low" and t["investigation"].get("review") == "pending")])
+              and not (t["complexity"]["tier"] == "low" and t["investigation"].get("review") in ("pending", "changes"))])
     elif kind == "recheck":
         hours = float(opt(args, "--min-age-hours") or st.cfg["recheck"]["min_age_hours"])
         limit = int(opt(args, "--limit") or st.cfg["recheck"]["max_per_run"])
@@ -1340,6 +1346,9 @@ def main(argv):
     if not argv or argv[0] not in COMMANDS:
         cmd_help([], None)
         return 1
+    if "--help" in argv or "-h" in argv:
+        cmd_help([], None)  # never act on a help request
+        return 0
     try:
         COMMANDS[argv[0]](argv[1:], Store())
         return 0

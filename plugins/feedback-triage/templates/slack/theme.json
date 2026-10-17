@@ -1,18 +1,49 @@
 {
   "spice": {
-    "1": { "emoji": "🌶️", "label": "Mild" },
-    "2": { "emoji": "🌶️🌶️", "label": "Medium" },
-    "3": { "emoji": "🌶️🌶️🌶️", "label": "Hot" },
-    "4": { "emoji": "🌶️🌶️🌶️🌶️", "label": "Inferno" }
+    "1": {
+      "emoji": "🌶️",
+      "label": "Mild"
+    },
+    "2": {
+      "emoji": "🌶️🌶️",
+      "label": "Medium"
+    },
+    "3": {
+      "emoji": "🌶️🌶️🌶️",
+      "label": "Hot"
+    },
+    "4": {
+      "emoji": "🌶️🌶️🌶️🌶️",
+      "label": "Inferno"
+    }
   },
   "type": {
-    "bug": { "emoji": "🐛", "label": "Bug" },
-    "feature": { "emoji": "✨", "label": "Feature" }
+    "bug": {
+      "emoji": "🐛",
+      "label": "Bug"
+    },
+    "feature": {
+      "emoji": "✨",
+      "label": "Feature"
+    }
   },
   "tier": {
-    "high": { "emoji": "🧠", "label": "Needs eng" },
-    "medium": { "emoji": "🧭", "label": "Options ready" },
-    "low": { "emoji": "🔧", "label": "PR ready" }
+    "high": {
+      "emoji": "🧠",
+      "label": "Needs eng"
+    },
+    "medium": {
+      "emoji": "🧭",
+      "label": "Options ready"
+    },
+    "low": {
+      "emoji": "🔧",
+      "label": "PR ready"
+    },
+    "low_branch": {
+      "emoji": "🌿",
+      "label": "Fix on branch"
+    }
   },
   "repro": {
     "reproduced": "✅ Repro'd",
@@ -20,7 +51,11 @@
     "not-reproduced": "❌ No repro",
     "not-attempted": "⏸️ Repro not tried"
   },
-  "source": { "github": "🐙", "slack": "💬", "other": "📎" },
+  "source": {
+    "github": "🐙",
+    "slack": "💬",
+    "other": "📎"
+  },
   "labels": {
     "what": "What:",
     "found": "Found:",

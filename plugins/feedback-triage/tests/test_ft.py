@@ -171,11 +171,30 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(self.e.run("pr", self.id, "--url", "https://x", ok=False).returncode, 2)
         self.e.j("review", self.id, "--verdict", "approved", "--notes", "tests cover it")
         self.assertEqual(self.e.hook(hook).returncode, 0)
+        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, recommendation="Review the branch.")))
+        text = open(os.path.join(self.e.dir, next(f["file"] for f in self.e.j("render")["files"] if f["kind"] == "ticket"))).read()
+        self.assertIn("🌿 Fix on branch", text)
+        self.assertIn("`ft/FT-0001-sso-refresh`", text)
+        self.assertFalse(any(l != l.rstrip() for l in text.splitlines()))
         self.e.j("pr", self.id, "--url", "https://github.com/acme/app/pull/7")
+        text = open(os.path.join(self.e.dir, next(f["file"] for f in self.e.j("render")["files"] if f["kind"] == "ticket"))).read()
+        self.assertIn("🔧 PR ready", text)
+        self.assertIn("|👉 Review the PR>", text)
         self.assertEqual(self.e.j("get", self.id)["spiciness"]["factors"]["readiness"], 1)
         mcp = {"hook_event_name": "PreToolUse", "tool_name": "mcp__github__create_pull_request",
                "tool_input": {"head": "ft/FT-0001-sso-refresh"}}
         self.assertEqual(self.e.hook(mcp).returncode, 0)
+
+    def test_push_from_worktree_is_gated(self):
+        self.investigate()  # medium tier
+        wt = os.path.join(self.e.dir, "wt")
+        subprocess.run(["git", "init", "-q", "-b", "ft/FT-0001-try", wt], check=True)
+        for cmd in (f"git -C {wt} push -u origin HEAD", f"cd {wt} && git push"):
+            p = self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": cmd}})
+            self.assertEqual(p.returncode, 2, cmd)
+        p = self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                         "tool_input": {"command": "git push origin main"}})
+        self.assertEqual(p.returncode, 0)
 
     def test_medium_branch_cannot_pr(self):
         self.investigate()
@@ -230,6 +249,53 @@ class Lifecycle(unittest.TestCase):
         t = self.e.j("get", self.id)
         self.assertEqual(t["spiciness"]["factors"]["momentum"], 2)  # 4 distinct reporters
         self.assertEqual(t["spiciness"]["level"], 3)
+
+
+class Persistence(unittest.TestCase):
+    """state.sh branch mode: two clones share one queue through an orphan state branch."""
+
+    def test_branch_mode_round_trip(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        remote = os.path.join(tmp.name, "remote.git")
+        subprocess.run(["git", "init", "-q", "--bare", remote], check=True)
+        clones = []
+        for name in ("a", "b"):
+            d = os.path.join(tmp.name, name)
+            subprocess.run(["git", "init", "-q", "-b", "main", d], check=True)
+            subprocess.run(["git", "-C", d, "remote", "add", "origin", remote], check=True)
+            subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                            "--allow-empty", "-m", "init"], check=True)
+            os.makedirs(os.path.join(d, ".claude"))
+            with open(os.path.join(d, ".claude", "feedback-triage.json"), "w") as f:
+                json.dump({"state": {"persist": "branch"}}, f)
+            clones.append(d)
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        state = os.path.join(ROOT, "scripts", "state.sh")
+
+        def sh(d, *args):
+            return subprocess.run([state, *args], capture_output=True, text=True, check=True,
+                                  env={**env, "FT_PROJECT_DIR": d})
+
+        def ft(d, *args):
+            return subprocess.run([sys.executable, FT, *args], capture_output=True, text=True, check=True,
+                                  env={**env, "FT_PROJECT_DIR": d}).stdout
+
+        a, b = clones
+        sh(a, "pull")
+        ft(a, "init", "--no-config")
+        ft(a, "upsert", "--json", cand(1))
+        self.assertIn('"pushed":true', sh(a, "save", "intake a").stdout)
+        sh(b, "pull")
+        self.assertIn("FT-0001", ft(b, "list"))
+        ft(b, "upsert", "--json", cand(2, author="kim"))
+        sh(b, "save", "intake b")
+        sh(a, "pull")
+        self.assertIn("FT-0002", ft(a, "list"))
+        # the product branch never sees queue files
+        status = subprocess.run(["git", "-C", a, "status", "--porcelain"], capture_output=True, text=True).stdout
+        self.assertNotIn(".feedback-triage", status)
 
 
 class Hooks(unittest.TestCase):

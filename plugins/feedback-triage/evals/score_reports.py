@@ -47,6 +47,7 @@ def shape(text):
         elif line.startswith("*Do:*"): kinds.append("do")
         elif line.startswith("*Ask:*"): kinds.append("ask")
         elif line.startswith("<") and "|" in line and ("👉" in line): kinds.append("pr")
+        elif line.startswith("🌿 `"): kinds.append("branch")
         elif line.startswith("<"): kinds.append("sources")
         else: kinds.append("OTHER:" + line[:30])
     return kinds
