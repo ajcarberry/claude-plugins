@@ -16,7 +16,7 @@ headers, or links.
 |---|---|---|
 | `headline` | ≤ 12 words, no end punctuation | the user-visible problem or want — not the fix, not the component |
 | `what` | ≤ 2 sentences | who hits it, when, what they see (feature: what they want to do and why) |
-| `findings` | 1–3 items, ≤ 20 words each | one verified fact each, most decisive first: repro result, root cause (`fn` in backticks), scope, an existing PR's verdict |
+| `findings` | 1–3 items, ≤ 20 words each | one verified fact each, most decisive first: repro result, root cause (`fn` in backticks), scope, an existing PR's verdict. Keep the conditions needed to see it (inputs, flags) |
 | `recommendation` | ≤ 2 sentences | a command to the team (required for medium/low) |
 | `ask` | 1 sentence, optional | the one decision only a human can make |
 
@@ -24,11 +24,13 @@ Recommendation by outcome:
 - **Existing PR fixes it** → "Review and merge PR #N." + the one thing to check.
 - **Low, our fix** → "Review and merge the PR." (no PR opened → "the branch.") +
   the one thing to check. The template prints the link — don't repeat it.
-- **Medium** → "Pick option A: …" + why, in one sentence.
+- **Medium** → "Pick option A: <what it is>" + why — readers never see the
+  options, so name the option's content.
 - **High** → where an engineer should start.
 
-Only facts from the investigation file. If related tickets exist, the
-recommendation must agree with theirs.
+Only facts from the investigation file. A PR named in the recommendation must be
+the one the template links (`ft.py lint` checks). A conflict with a related
+ticket goes in `ask`, naming it.
 
 ## Style — ASD-STE100, written for a smart 18-year-old
 
@@ -44,5 +46,5 @@ Bad: "We've basically been seeing a number of reports that might possibly relate
 to SSO." Good: "Users who stay idle for 60 minutes cannot log in again."
 
 `ft.py lint` enforces the countable rules and bans filler words (just, simply,
-very, really, basically, leverage, utilize, in order to, …). Fix every error and
-warning it reports.
+very, really, basically, leverage, utilize, in order to, …). Fix every error;
+warnings (passive voice, end punctuation) are hints.

@@ -45,8 +45,9 @@ recover_conflict() {
   git -C "$DIR" rebase --abort 2>/dev/null || true
   local backup="$BRANCH-conflict-$(date -u +%Y%m%dT%H%M%SZ)"
   git -C "$DIR" branch -f "$backup" HEAD
+  git -C "$DIR" push -q "$REMOTE" "$backup" 2>/dev/null || true  # survive ephemeral runners
   git -C "$DIR" reset -q --hard "$REMOTE/$BRANCH"
-  echo "state.sh: another runner saved conflicting queue changes. Took the remote queue; your run's commit is kept on branch $backup. Re-run the phase (it is idempotent); run one writer at a time per queue." >&2
+  echo "state.sh: another runner saved conflicting queue changes. Took the remote queue; this run's commit is on branch $backup. Re-run intake/recheck/report as-is. For investigate, re-run for the same tickets and first record any PR already opened (see $backup log.jsonl) with ft.py pr. Run one writer at a time per queue." >&2
   echo "{\"persist\":\"branch\",\"pushed\":false,\"conflict\":true,\"backup\":\"$backup\"}"
   exit 3
 }
@@ -98,14 +99,21 @@ case "$MODE:$CMD" in
   branch:pull)
     ensure_branch_worktree
     abort_stale_rebase
+    # unsaved changes from a crashed phase: commit them so a conflict is recoverable, never left in the tree
+    git -C "$DIR" add -A
+    git -C "$DIR" diff --cached --quiet || git -C "$DIR" commit -qm "feedback-triage: unsaved changes from an interrupted run"
     if git -C "$ROOT" ls-remote --exit-code --heads "$REMOTE" "$BRANCH" >/dev/null 2>&1; then
       retry git -C "$DIR" fetch -q "$REMOTE" "$BRANCH"
-      git -C "$DIR" rebase -q --autostash "$REMOTE/$BRANCH" >/dev/null 2>&1 || recover_conflict
+      git -C "$DIR" rebase -q "$REMOTE/$BRANCH" >/dev/null 2>&1 || recover_conflict
     fi
     echo "{\"persist\":\"branch\",\"branch\":\"$BRANCH\",\"dir\":\"$DIR\"}" ;;
   branch:save)
     ensure_branch_worktree
     abort_stale_rebase
+    if [ -n "$(git -C "$DIR" diff --name-only --diff-filter=U)" ] || ! FT_PROJECT_DIR="$ROOT" python3 "$FT" validate >/dev/null; then
+      echo "state.sh: the queue is invalid (run ft.py validate) — not saving or pushing it." >&2
+      exit 4
+    fi
     git -C "$DIR" add -A
     git -C "$DIR" diff --cached --quiet || git -C "$DIR" commit -qm "$MSG"
     pushed=false
@@ -114,8 +122,8 @@ case "$MODE:$CMD" in
       # rejected (someone saved first) or network: fetch, replay ours on top, try again
       retry git -C "$DIR" fetch -q "$REMOTE" "$BRANCH" || { sleep 2; continue; }
       git -C "$DIR" rebase -q "$REMOTE/$BRANCH" >/dev/null 2>&1 || recover_conflict
+      FT_PROJECT_DIR="$ROOT" python3 "$FT" validate >/dev/null || recover_conflict
     done
-    python3 "$FT" validate >/dev/null || echo "WARNING: queue validation failed after save — run ft.py validate" >&2
     echo "{\"persist\":\"branch\",\"saved\":true,\"pushed\":$pushed}" ;;
   *)
     echo "usage: state.sh pull | save \"<message>\"" >&2; exit 1 ;;

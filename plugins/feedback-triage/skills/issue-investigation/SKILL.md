@@ -12,12 +12,20 @@ the project needs setup (deps, codegen) and none ran, do it in the worktree firs
 
 ## 1. Triage (every ticket)
 
-1. Read the ticket and **every** source, comments included.
-2. **Fix already in flight?** For each `linked_prs` entry (and any PR the comments
-   mention): `git fetch origin pull/<N>/head:pr-<N>` and read its diff
+1. Read the ticket and **every** source, comments included. Shallow clone? Fetch
+   history first (`git fetch --depth 500 origin <base>`) — it hides merged fixes.
+   Already fixed on the base branch (a merged PR or commit; the repro passes on
+   base)? Write the investigation file and return `fixed_on_base: {"commit",
+   "evidence"}` — the ticket closes; nothing else to do.
+2. **Fix already in flight?** Only PRs the ticket's sources link (`linked_prs`) or
+   whose comments name them — don't trawl the repo's PR list. For each: `git fetch origin pull/<N>/head:pr-<N>` and read its diff
    (`git diff <base>...pr-<N>`; shallow clone → `git show pr-<N>`). Run the repro
    or its tests against it. Verdict: `fixes` · `partial` · `wrong` · `unverified`
-   (could not fetch). `fixes` → never build a branch (`ft.py` refuses it); the
+   (could not fetch). Merged already (`git merge-base --is-ancestor pr-<N>
+   origin/<base>`)? Then it is `fixed_on_base`, not an open PR to review. Note the
+   author if it is a bot or automation account.
+   Not linked but clearly the same change? Add `unlinked_reason` inside
+   `existing_pr`. `fixes` → never build a branch (`ft.py` refuses it); the
    recommendation becomes "review PR #N" plus anything it misses.
 3. **Bug** → [bug-playbook.md](references/bug-playbook.md): reconstruct, reproduce,
    root-cause. **Feature** → [feature-playbook.md](references/feature-playbook.md):
@@ -41,7 +49,7 @@ Z". Feature: where it lives, what it touches, what it must not break. Write **�
 real options** (approach · touches · effort S/M/L · risk · leaves out) and
 recommend one in one sentence.
 
-## 3. Implement (low, and no PR already covers it)
+## 3. Implement (low, unless a PR already `fixes` it; `partial`/`unverified` still need our tested change)
 
 Bug: the repro becomes a failing test first; watch it fail; fix the cause; watch
 it pass; run the full suite. Feature: a test per acceptance criterion, then the

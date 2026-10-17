@@ -15,8 +15,10 @@ refused. Subagents get paths, never conversation history, and never write the qu
 `state.sh pull` (`${CLAUDE_PLUGIN_ROOT}/scripts/state.sh`), then `ft claim --limit
 <--limit or investigate.max_per_run>` (`--ids` from `$ARGUMENTS`). Nothing claimed →
 `Investigate: queue is clear.` **STOP** — unless `ft due review` lists low tickets
-whose review never finished (a crashed run): resume those at step 4. Run dir
-`<runs>/investigate-<UTC ts>/`.
+whose review never finished (a crashed run): resume those at step 4, or, if
+`wt path <ID>` finds no worktree, `ft review <ID> --verdict changes --notes
+"worktree lost" --downgrade`. Then `state.sh save "investigate: claimed <ids>"` at
+once, so other runners see the claims. Run dir `<runs>/investigate-<UTC ts>/`.
 
 ## 2. Dispatch (parallel, cap `investigate.max_parallel`)
 

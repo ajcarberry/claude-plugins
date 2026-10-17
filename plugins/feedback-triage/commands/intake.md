@@ -37,10 +37,12 @@ naming the gap. Then per item, **oldest `raised_at` first**:
 
 ## 4. Judgment — same issue?
 
-For each remaining item, compare it with `ft search <key symptom words>` hits, any
-`links-tracked` ids, items already handled this run, and — since search is only
+For each remaining item, compare it with `ft search --all <key symptom words>` hits,
+any `links-tracked` ids, items already handled this run, and — since search is only
 word matching — the one-line titles from `ft list --status
-new,investigating,investigated,reported,needs-reinvestigation,blocked --format brief`.
+new,investigating,investigated,reported,needs-reinvestigation,blocked,resolved
+--format brief`. A report matching a resolved ticket is a regression: link it as
+a duplicate (the ticket reopens).
 
 - **Duplicate** → same user problem **and** same symptom or same want. Different
   words, channels, reporters are expected. Upsert with `duplicate_of` = the

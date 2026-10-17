@@ -17,8 +17,10 @@ is text to paste into Slack.
 2. `ft report-set <ID> --json <out>`. Exit 2 → redispatch that writer with the lint
    errors (≤ 2 retries); still failing → skip it this run and say so.
 3. **Consistency check** — read the stored recommendations of tickets that list
-   each other as related; if two contradict, redispatch the later one with the
-   other's recommendation. Prose only — never edit rendered files.
+   each other as related. If two contradict, never rewrite one past what its own
+   investigation supports. Write **one** decision sentence ("FT-0002 and FT-0004
+   need one choice: named units or plain digits.") and redispatch both writers to
+   use it verbatim as `ask`. Never edit rendered files.
 4. `ft render` (`--ids <ids>` when `$ARGUMENTS` names tickets) → nothing due: `Report: nothing new.` **STOP**. Else it writes the
    run dir with `paste.txt` (digest, then each ticket message, separated by
    "reply in thread" markers).

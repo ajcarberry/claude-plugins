@@ -472,7 +472,7 @@ def lint_text(field, text):
     return errs, warns
 
 
-def lint_report(report, tier):
+def lint_report(report, tier, pr_numbers=None):
     errs, warns = [], []
     if not isinstance(report, dict):
         return ["report must be an object"], []
@@ -498,6 +498,14 @@ def lint_report(report, tier):
         e, w = lint_text("ask", report["ask"])
         errs += e
         warns += w
+    rec_text = report.get("recommendation") or ""
+    if pr_numbers is not None and rec_text:
+        named = set(re.findall(r"\bPR #?(\d+)", rec_text))
+        if named - pr_numbers:
+            errs.append(f"recommendation names PR #{', #'.join(sorted(named))} but the report links "
+                        f"PR #{', #'.join(sorted(pr_numbers))} — they must agree")
+    for m in re.finditer(r"\b[Oo]ption ([A-Z])\b(?!\s*[:—-])", rec_text):
+        errs.append(f"recommendation: say what option {m.group(1)} is (\"Pick option {m.group(1)}: …\") — readers never see the options")
     extra = set(report) - {"headline", "what", "findings", "recommendation", "ask"}
     if extra:
         errs.append(f"unknown report fields: {sorted(extra)}")
@@ -576,14 +584,14 @@ def ticket_values(t, theme):
     branch = ""
     ext = inv.get("existing_pr") or {}
     if ext.get("verdict") in ("fixes", "partial", "unverified"):
-        effective_tier = "existing_pr"  # someone already has a fix in flight
+        effective_tier = "existing_pr_" + ext["verdict"]  # someone already has a fix in flight
     elif tier == "low" and not inv.get("pr_url"):
         if inv.get("review") == "approved" and inv.get("branch"):
             effective_tier = "low_branch"  # reviewed fix exists, no change request opened
             branch = f"{theme['tier']['low_branch']['emoji']} `{inv['branch']}`"
         else:
             effective_tier = "medium"
-    pr_url = inv.get("pr_url") or (ext.get("url") if effective_tier == "existing_pr" else "")
+    pr_url = inv.get("pr_url") or (ext.get("url") if effective_tier.startswith("existing_pr") else "")
     pr = slack_link(pr_url, f"{theme['pr']} {theme['labels']['pr']}") if pr_url else ""
     repro = ""
     if t["type"] == "bug" and inv.get("repro") in theme.get("repro", {}):
@@ -732,7 +740,7 @@ def refresh_existing(st, idx, ref, src_raw):
             if src_raw.get(k) and src_raw[k] != s_.get(k):
                 s_[k] = src_raw[k]
                 changed = True
-        if changed and t["status"] == "resolved" and (src_raw.get("state") or "").lower() == "open":
+        if changed and t["status"] in ("resolved", "invalid") and (src_raw.get("state") or "").lower() == "open":
             transition(t, "needs-reinvestigation", "intake", f"{ref} reopened upstream")
         if changed:
             history(t, "source-refreshed", "intake", ref=ref)
@@ -759,8 +767,9 @@ def cmd_upsert(args, st):
             emit({"action": "exists", "id": tid, "ref": ref, "refreshed": changed})
             return
         if ref in idx["ignored"]:
-            reopened = (src_raw.get("state") or "").lower() == "open" and \
-                re.match(r"^(?:\w+:\s*)?closed", idx["ignored"][ref]["reason"].lower())
+            closed_reason = re.match(r"^(?:\w+:\s*)?closed", idx["ignored"][ref]["reason"].lower())
+            # reopened upstream, or re-read and now judged feedback (a question that turned out a bug)
+            reopened = (src_raw.get("state") or "").lower() == "open" if closed_reason else cand.get("type") in TYPES
             if not reopened:
                 emit({"action": "ignored", "ref": ref, "reason": idx["ignored"][ref]["reason"]})
                 return
@@ -1088,7 +1097,8 @@ def cmd_release(args, st):
 
 INVESTIGATION_KEYS = {"id", "status", "type", "complexity", "impact", "reach", "repro",
                       "investigation_file", "branch", "worktree", "commit", "summary_correction",
-                      "bump", "bump_reason", "concerns", "options_count", "root_cause", "existing_pr"}
+                      "bump", "bump_reason", "concerns", "options_count", "root_cause", "existing_pr",
+                      "fixed_on_base"}
 
 
 def cmd_investigated(args, st):
@@ -1105,6 +1115,21 @@ def cmd_investigated(args, st):
             raise Blocked(f"{tid} is {t['status']}, not investigating — claim it first")
         if res.get("status") == "BLOCKED":
             raise BadInput("BLOCKED results go through: ft.py release ID --reason ...")
+        fixed = res.get("fixed_on_base")
+        if fixed:  # {"commit": sha, "evidence": "..."} — the problem no longer exists on the base branch
+            if not isinstance(fixed, dict) or not fixed.get("commit") or not fixed.get("evidence"):
+                raise BadInput("fixed_on_base needs commit and evidence")
+            inv = t["investigation"]
+            inv.update({"file": res.get("investigation_file"), "completed_at": iso(), "attempts": 0})
+            inv.pop("claimed_at", None)
+            t["verification"] = dict(t.get("verification") or {}, fixed_by=fixed["commit"],
+                                     notes=fixed["evidence"], last_checked_at=iso(), verdict="resolved")
+            transition(t, "new", "investigate", "already fixed on base")
+            transition(t, "resolved", "investigate", f"fixed on base by {fixed['commit']}")
+            st.put(t)
+            st.log("investigated", id=tid, fixed_on_base=fixed["commit"])
+            emit({"id": tid, "status": "resolved", "fixed_by": fixed["commit"], "next": "none"})
+            return
         c = res.get("complexity") or {}
         if c.get("tier") not in TIERS or not c.get("rationale"):
             raise BadInput("complexity needs tier (low|medium|high) and rationale")
@@ -1121,7 +1146,13 @@ def cmd_investigated(args, st):
         ext = res.get("existing_pr")
         if ext and (not isinstance(ext, dict) or ext.get("verdict") not in PR_VERDICTS or not ext.get("url")):
             raise BadInput(f"existing_pr needs url and verdict (one of {PR_VERDICTS})")
-        defer = bool(ext) and ext["verdict"] in ("fixes", "partial", "unverified")
+        if ext:
+            linked = {normalize_ref(p.get("url")) for s_ in t["sources"] for p in s_.get("linked_prs") or []}
+            ext["linked"] = normalize_ref(ext["url"]) in linked
+            if not ext["linked"] and not ext.get("unlinked_reason"):
+                raise BadInput(f"{ext['url']} is not linked from this ticket's sources "
+                               f"({sorted(x for x in linked if x) or 'none'}) — use a linked PR, or give unlinked_reason")
+        defer = bool(ext) and ext["verdict"] == "fixes"  # only a verified fix waives our own tested change
         if ext and ext["verdict"] == "fixes" and res.get("branch"):
             raise BadInput(f"{ext['url']} already fixes this — review it instead of building a duplicate branch")
         prior = t["investigation"].get("prior_attempt")
@@ -1139,6 +1170,10 @@ def cmd_investigated(args, st):
                     "concerns": res.get("concerns") or None})
         inv.pop("claimed_at", None)
         inv["existing_pr"] = ext or None
+        inv["attempts"] = 0  # failures reset after a success
+        if not (c["tier"] == "low" and res.get("branch")):
+            for k in ("branch", "worktree", "commit", "review", "review_notes", "pr_url"):
+                inv.pop(k, None)  # a re-investigation that built nothing carries no stale PR/branch
         if c["tier"] == "low" and res.get("branch"):
             inv.update({"branch": res["branch"], "worktree": res.get("worktree"),
                         "commit": res.get("commit"), "review": "pending"})
@@ -1224,7 +1259,11 @@ def cmd_report_set(args, st):
         t = st.get(tid)
         if t["status"] not in REPORTABLE:
             raise Blocked(f"{tid} is {t['status']} — only investigated/reported tickets get a report")
-        errs, warns = lint_report(report, t["complexity"]["tier"])
+        inv = t.get("investigation") or {}
+        ext = inv.get("existing_pr") or {}
+        urls = [inv.get("pr_url"), ext.get("url") if ext.get("verdict") in ("fixes", "partial", "unverified") else None]
+        prs = {m.group(1) for u in urls if u for m in [re.search(r"/pull/(\d+)", u)] if m}
+        errs, warns = lint_report(report, t["complexity"]["tier"], prs)
         if errs:
             emit({"id": tid, "ok": False, "errors": errs, "warnings": warns})
             sys.exit(2)
@@ -1242,10 +1281,12 @@ def cmd_lint(args, st):
         sys.exit(2)
 
 
-def due_reports(st):
+def due_reports(st, ignore_hash=False, only=None):
     out = []
     min_level = int(st.cfg["report"].get("min_level") or 1)
     for t in st.all():
+        if only and t["id"] not in only:
+            continue
         if t["status"] not in REPORTABLE or not t.get("report") or t["report"].get("_stale"):
             continue
         if (t["spiciness"] or {}).get("level", 0) < min_level:
@@ -1253,7 +1294,7 @@ def due_reports(st):
         inv = t.get("investigation") or {}
         if inv.get("review") in ("pending", "changes"):
             continue  # wait for the reviewer verdict / the revision
-        if (t.get("reported") or {}).get("hash") == report_hash(t):
+        if not ignore_hash and (t.get("reported") or {}).get("hash") == report_hash(t):
             continue
         out.append(t)
     out.sort(key=lambda t: (-t["spiciness"]["level"], -t["spiciness"]["score"], t["id"]))
@@ -1290,7 +1331,7 @@ def cmd_due(args, st):
 def cmd_render(args, st):
     st.require()
     ids = [canonical_id(x) for x in (opt(args, "--ids") or "").split(",") if x]
-    tickets = [st.get(i) for i in ids] if ids else due_reports(st)
+    tickets = due_reports(st, ignore_hash=bool(ids), only=ids) if ids else due_reports(st)
     theme = load_theme(st.root)
     closed, closed_ids = [], []
     for t in st.all():
@@ -1312,10 +1353,18 @@ def cmd_render(args, st):
     files = []
     lines = [f"{theme['spice'][str(t['spiciness']['level'])]['emoji']} {t['id']} · {t['report']['headline']}"
              for t in tickets]
+    every = st.all()
+    waiting = sum(1 for t in every if t["status"] in ("new", "needs-reinvestigation", "investigating"))
+    blocked = [t["id"] for t in every if t["status"] == "blocked"]
+    backlog = []
+    if waiting:
+        backlog.append(f"{theme['backlog']} {waiting} not investigated yet")
+    if blocked:
+        backlog.append(f"{theme['blocked']} blocked, needs a human: {', '.join(blocked)}")
     digest = fill(load_template(st.root, "digest.txt"), {
         "digest_emoji": theme["digest"], "date": now().strftime("%Y-%m-%d"),
         "count": str(len(tickets)), "noun": "report" if len(tickets) == 1 else "reports",
-        "lines": lines, "closed": closed,
+        "lines": lines, "closed": closed, "backlog": backlog,
     })
     path = os.path.join(outdir, "00-digest.txt")
     with open(path, "w") as f:
@@ -1335,8 +1384,8 @@ def cmd_render(args, st):
         fh.write(f"\n\n{theme['labels']['reply']}\n\n".join(texts) + "\n")
     write_json(os.path.join(outdir, "manifest.json"), {"run": run, "channel": st.cfg["report"]["channel"],
                                                        "files": files})
-    # older unposted runs are superseded: the queue re-renders anything still due
-    for old in os.listdir(os.path.join(st.dir, "reports", "outbox")):
+    # older unposted runs are superseded by a full render (a re-print with --ids keeps them)
+    for old in ([] if ids else os.listdir(os.path.join(st.dir, "reports", "outbox"))):
         if old != run:
             os.makedirs(os.path.join(st.dir, "reports", "superseded"), exist_ok=True)
             os.replace(os.path.join(st.dir, "reports", "outbox", old),
@@ -1350,6 +1399,8 @@ def cmd_sent(args, st):
     st.require()
     run = args[0] if args else ""
     outdir = os.path.join(st.dir, "reports", "outbox", run)
+    if not os.path.exists(outdir) and os.path.exists(os.path.join(st.dir, "reports", "superseded", run)):
+        outdir = os.path.join(st.dir, "reports", "superseded", run)  # pasted before a newer render
     manifest = read_json(os.path.join(outdir, "manifest.json"))
     if not manifest:
         raise BadInput(f"no outbox run {run}")

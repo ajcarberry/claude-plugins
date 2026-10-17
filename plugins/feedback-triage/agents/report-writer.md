@@ -18,6 +18,6 @@ reports' recommendations, if any), `out` (report JSON path), optional
 1. Read both files; note tier, repro, and whether a PR (ours or existing) exists.
 2. Write `{"headline", "what", "findings", "recommendation", "ask"?}` to `out`.
 3. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ft.py lint --tier <tier> --json <out>`
-   until `"ok": true` and no warnings.
+   until `"ok": true`. Warnings are hints: fix them when the rewrite reads better.
 
 **Return (≤ 3 lines):** `<ID>: lint ok` (or remaining errors) · out path.

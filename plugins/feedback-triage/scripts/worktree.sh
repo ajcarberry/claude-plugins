@@ -47,8 +47,10 @@ case "$CMD" in
     echo "removed $WT" ;;
   discard)
     [ -d "$WT" ] && git -C "$ROOT" worktree remove --force "$WT"
+    # keep a branch that failed review: it is one of the ticket's options now
+    KEEP=$(FT_PROJECT_DIR="$ROOT" python3 "$FT" get "$ID" 2>/dev/null | python3 -c 'import json,sys; print((json.load(sys.stdin).get("investigation") or {}).get("prior_attempt") or "")' 2>/dev/null || true)
     for b in $(git -C "$ROOT" for-each-ref --format='%(refname:short)' "refs/heads/${PREFIX}${ID}-*"); do
-      git -C "$ROOT" branch -q -D "$b"
+      [ "$b" = "$KEEP" ] || git -C "$ROOT" branch -q -D "$b"
     done
     echo "discarded $WT" ;;
   path)

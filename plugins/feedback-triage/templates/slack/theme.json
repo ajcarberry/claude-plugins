@@ -44,9 +44,17 @@
       "emoji": "🌿",
       "label": "Fix on branch"
     },
-    "existing_pr": {
+    "existing_pr_fixes": {
       "emoji": "🔗",
       "label": "PR exists"
+    },
+    "existing_pr_partial": {
+      "emoji": "🔗",
+      "label": "PR exists (partial fix)"
+    },
+    "existing_pr_unverified": {
+      "emoji": "🔗",
+      "label": "PR exists (unverified)"
     }
   },
   "repro": {
@@ -71,5 +79,7 @@
   },
   "pr": "👉",
   "digest": "📋",
-  "closed": "✅"
+  "closed": "✅",
+  "backlog": "⏳",
+  "blocked": "🚧"
 }

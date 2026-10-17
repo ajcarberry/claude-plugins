@@ -62,7 +62,7 @@ def check_bash(st, cmd, cwd):
     if not PUSH_OR_PR.search(cmd):
         return
     prefix = re.escape(st.cfg["investigate"]["branch_prefix"])
-    named = re.findall(rf"(?:^|[\s:=])({prefix}FT-\d{{4,}}[\w./-]*)", cmd, re.I)
+    named = re.findall(rf"(?:^|[\s:=\"'/])({prefix}FT-\d{{4,}}[\w./-]*)", cmd, re.I)
     where = re.search(r"git\s+-C\s+(\S+)\s+push", cmd) or re.search(r"\bcd\s+(\S+)\s*(?:&&|;)", cmd)
     branches = named or [current_branch(where.group(1).strip("'\"") if where else cwd)]
     for b in branches:

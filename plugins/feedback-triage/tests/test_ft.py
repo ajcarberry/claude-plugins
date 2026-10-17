@@ -166,9 +166,12 @@ class Intake(unittest.TestCase):
         r = dict(GOOD_REPORT, what="The token is rejected by the server.")
         self.assertTrue(self.e.j("lint", "--json", json.dumps(r))["warnings"])
 
-    def test_ignore(self):
-        self.e.j("ignore", "--ref", "acme/app#99", "--reason", "question, answered")
-        self.assertEqual(self.e.j("upsert", "--json", cand(99))["action"], "ignored")
+    def test_ignore_and_reclassify(self):
+        self.e.j("ignore", "--ref", "acme/app#99", "--reason", "closed: fixed upstream")
+        self.assertEqual(self.e.j("upsert", "--json", cand(99))["action"], "ignored")  # still closed
+        self.e.j("ignore", "--ref", "acme/app#98", "--reason", "question: how to export")
+        # re-read later and now judged a bug ("it drops a row") → tracked, never missed
+        self.assertEqual(self.e.j("upsert", "--json", cand(98))["action"], "created")
 
     def test_watermark_monotonic(self):
         self.e.j("watermark", "set", "github:acme/app", "2026-10-02T00:00:00Z")
@@ -261,7 +264,8 @@ class Lifecycle(unittest.TestCase):
         self.investigate()  # medium tier
         wt = os.path.join(self.e.dir, "wt")
         subprocess.run(["git", "init", "-q", "-b", "ft/FT-0001-try", wt], check=True)
-        for cmd in (f"git -C {wt} push -u origin HEAD", f"cd {wt} && git push"):
+        for cmd in (f"git -C {wt} push -u origin HEAD", f"cd {wt} && git push",
+                    "gh pr create --head \"ft/FT-0001-try\"", "git push origin HEAD:refs/heads/ft/FT-0001-try"):
             p = self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": cmd}})
             self.assertEqual(p.returncode, 2, cmd)
         p = self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash",
@@ -300,9 +304,10 @@ class Lifecycle(unittest.TestCase):
         self.e.j("claim")
         res = {"id": self.id, "complexity": {"tier": "low", "rationale": "one line"}, "impact": 2, "reach": 2,
                "repro": "reproduced", "investigation_file": self.inv,
-               "existing_pr": {"url": "https://github.com/acme/app/pull/9", "verdict": "fixes"}}
+               "existing_pr": {"url": "https://github.com/acme/app/pull/9", "verdict": "fixes",
+                               "unlinked_reason": "test"}}
         self.assertEqual(self.e.j("investigated", "--json", json.dumps(res))["next"], "report")
-        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, recommendation="Review and merge the existing PR.")))
+        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, recommendation="Review and merge PR #9.")))
         out = self.e.j("render")
         text = open(os.path.join(self.e.dir, next(f["file"] for f in out["files"] if f["kind"] == "ticket"))).read()
         self.assertIn("🔗 PR exists", text)
@@ -345,12 +350,81 @@ class Lifecycle(unittest.TestCase):
         res.pop("branch")
         self.e.j("investigated", "--json", json.dumps(res))
 
+    def test_existing_pr_must_be_linked_and_match_recommendation(self):
+        self.e.j("claim")
+        res = {"id": self.id, "complexity": {"tier": "medium", "rationale": "r"}, "impact": 1, "reach": 1,
+               "repro": "reproduced", "investigation_file": self.inv, "options_count": 2,
+               "existing_pr": {"url": "https://github.com/acme/app/pull/77", "verdict": "partial"}}
+        p = self.e.run("investigated", "--json", json.dumps(res), ok=False)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("not linked", p.stderr)
+        res["existing_pr"]["unlinked_reason"] = "same diff, author forgot to link"
+        self.e.j("investigated", "--json", json.dumps(res))
+        bad = dict(GOOD_REPORT, recommendation="Review and merge PR #78.")
+        self.assertEqual(self.e.run("report-set", self.id, "--json", json.dumps(bad), ok=False).returncode, 2)
+        vague = dict(GOOD_REPORT, recommendation="Pick option A and merge PR #77.")
+        self.assertEqual(self.e.run("report-set", self.id, "--json", json.dumps(vague), ok=False).returncode, 2)
+        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, recommendation="Review PR #77 and add the empty-list test.")))
+        text = open(os.path.join(self.e.dir, next(f["file"] for f in self.e.j("render")["files"] if f["kind"] == "ticket"))).read()
+        self.assertIn("🔗 PR exists (partial fix)", text)
+
+    def test_reinvestigated_as_medium_drops_stale_pr(self):
+        self.investigate(tier="low", branch="ft/FT-0001-x")
+        self.e.j("review", self.id, "--verdict", "approved", "--notes", "ok")
+        self.e.j("pr", self.id, "--url", "https://github.com/acme/app/pull/99")
+        self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "needs-reinvestigation", "evidence": ["x"]}))
+        self.investigate(tier="medium")
+        inv = self.e.j("get", self.id)["investigation"]
+        self.assertNotIn("pr_url", inv)
+        self.assertNotIn("review", inv)
+
+    def test_low_with_partial_pr_still_needs_our_change(self):
+        self.e.j("claim")
+        res = {"id": self.id, "complexity": {"tier": "low", "rationale": "r"}, "impact": 1, "reach": 1,
+               "repro": "reproduced", "investigation_file": self.inv,
+               "existing_pr": {"url": "https://github.com/acme/app/pull/9", "verdict": "partial", "unlinked_reason": "t"}}
+        self.assertEqual(self.e.run("investigated", "--json", json.dumps(res), ok=False).returncode, 1)
+
+    def test_lint_pr_must_be_linked_and_option_case(self):
+        self.investigate()
+        self.assertEqual(self.e.run("report-set", self.id, "--json",
+                                    json.dumps(dict(GOOD_REPORT, recommendation="Merge PR #45 now.")), ok=False).returncode, 2)
+        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, recommendation="Pick the option a user sees first.")))
+
+    def test_reprint_keeps_unposted_run_and_filters(self):
+        self.investigate()
+        self.e.j("report-set", self.id, "--json", json.dumps(GOOD_REPORT))
+        first = self.e.j("render")
+        again = self.e.j("render", "--ids", self.id)
+        self.assertTrue(again["files"])
+        self.e.j("sent", first["run"], "--all")  # the first paste can still be recorded
+        other = self.e.j("upsert", "--json", cand(55, title="Unrelated", author="q"))["id"]
+        self.assertIsNone(self.e.j("render", "--ids", other)["run"])  # no report yet: nothing, no crash
+
+    def test_fixed_on_base_resolves_without_report(self):
+        self.e.j("claim")
+        r = self.e.j("investigated", "--json", json.dumps({"id": self.id, "investigation_file": self.inv,
+                     "fixed_on_base": {"commit": "ca892b36", "evidence": "repro passes on main"}}))
+        self.assertEqual(r["status"], "resolved")
+        self.assertEqual(self.e.j("due", "report-writing"), [])
+
+    def test_digest_names_backlog(self):
+        self.investigate()
+        self.e.j("upsert", "--json", cand(60, title="Not looked at yet", author="z"))
+        self.e.j("report-set", self.id, "--json", json.dumps(GOOD_REPORT))
+        out = self.e.j("render")
+        digest = open(os.path.join(self.e.dir, out["files"][0]["file"])).read()
+        self.assertIn("⏳ 1 not investigated yet", digest)
+
     def test_existing_fix_forbids_duplicate_branch(self):
         self.e.j("claim")
         res = {"id": self.id, "complexity": {"tier": "low", "rationale": "r"}, "impact": 1, "reach": 1,
                "repro": "reproduced", "investigation_file": self.inv, "branch": "ft/FT-0001-dup",
-               "existing_pr": {"url": "https://github.com/acme/app/pull/9", "verdict": "fixes"}}
-        self.assertEqual(self.e.run("investigated", "--json", json.dumps(res), ok=False).returncode, 1)
+               "existing_pr": {"url": "https://github.com/acme/app/pull/9", "verdict": "fixes",
+                               "unlinked_reason": "test"}}
+        p = self.e.run("investigated", "--json", json.dumps(res), ok=False)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("already fixes", p.stderr)
 
     def test_failures_not_claims_count_toward_blocked(self):
         self.investigate()
@@ -456,6 +530,17 @@ class Persistence(unittest.TestCase):
         self.assertIn('"pushed":true', sh(b, "save", "b again").stdout)
         sh(a, "pull")
         self.assertEqual(ft(a, "list", "--format", "ids").split(), ["FT-0001", "FT-0002", "FT-0003", "FT-0004"])
+        # a crashed phase left unsaved changes that conflict with the remote: pull must not leave markers
+        ft(a, "upsert", "--json", cand(5, author="r"))          # a crashes before saving (FT-0005)
+        ft(b, "upsert", "--json", cand(6, author="s"))          # b allocates FT-0005 too and saves
+        sh(b, "save", "b")
+        r = subprocess.run([state, "pull"], capture_output=True, text=True, env={**env, "FT_PROJECT_DIR": a})
+        self.assertEqual(r.returncode, 3, r.stderr)
+        self.assertIn("ok", ft(a, "validate"))
+        st_dir = os.path.join(a, ".feedback-triage")
+        unmerged = subprocess.run(["git", "-C", st_dir, "diff", "--name-only", "--diff-filter=U"],
+                                  capture_output=True, text=True).stdout
+        self.assertEqual(unmerged, "")
         # the product branch never sees queue files
         status = subprocess.run(["git", "-C", a, "status", "--porcelain"], capture_output=True, text=True).stdout
         self.assertNotIn(".feedback-triage", status)
