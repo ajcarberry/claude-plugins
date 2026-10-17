@@ -6,7 +6,7 @@
     },
     "2": {
       "emoji": "🌶️🌶️",
-      "label": "Medium"
+      "label": "Warm"
     },
     "3": {
       "emoji": "🌶️🌶️🌶️",
@@ -43,6 +43,10 @@
     "low_branch": {
       "emoji": "🌿",
       "label": "Fix on branch"
+    },
+    "existing_pr": {
+      "emoji": "🔗",
+      "label": "PR exists"
     }
   },
   "repro": {
@@ -62,11 +66,10 @@
     "do": "Do:",
     "ask": "Ask:",
     "raised": "raised",
-    "pr": "Review the PR",
-    "thread": "Details in thread"
+    "pr": "Review the PR:",
+    "reply": "──── reply in thread ────"
   },
   "pr": "👉",
   "digest": "📋",
-  "closed": "✅",
-  "thread": "🧵"
+  "closed": "✅"
 }

@@ -1,0 +1,123 @@
+{
+ "groups": {
+  "431-intcomma-sci": {
+   "type": "bug",
+   "refs": [
+    "github:python-humanize/humanize#431",
+    "slack:C0APPDEV/1791100000.000100"
+   ],
+   "tiers": [
+    "low",
+    "medium"
+   ],
+   "repro": true,
+   "existing_pr": true
+  },
+  "423-metric-quetta": {
+   "type": "bug",
+   "refs": [
+    "github:python-humanize/humanize#423"
+   ],
+   "tiers": [
+    "low",
+    "medium"
+   ],
+   "repro": true,
+   "existing_pr": true
+  },
+  "419-overflow-big-int": {
+   "type": "bug",
+   "refs": [
+    "github:python-humanize/humanize#419"
+   ],
+   "tiers": [
+    "medium",
+    "high"
+   ],
+   "repro": true,
+   "existing_pr": true
+  },
+  "379-precisedelta-sign": {
+   "type": "bug",
+   "refs": [
+    "github:python-humanize/humanize#379",
+    "slack:C0APPDEV/1791200000.000100"
+   ],
+   "tiers": [
+    "medium",
+    "low"
+   ],
+   "repro": true,
+   "existing_pr": true
+  },
+  "366-naturalsize-format": {
+   "type": "bug",
+   "refs": [
+    "github:python-humanize/humanize#366"
+   ],
+   "tiers": [
+    "low"
+   ],
+   "repro": true,
+   "existing_pr": true
+  },
+  "356-intword-beyond-decillion": {
+   "type": "bug",
+   "refs": [
+    "github:python-humanize/humanize#356"
+   ],
+   "tiers": [
+    "medium",
+    "low"
+   ],
+   "repro": true,
+   "existing_pr": true
+  },
+  "277-percentages": {
+   "type": "feature",
+   "refs": [
+    "github:python-humanize/humanize#277"
+   ],
+   "tiers": [
+    "medium",
+    "low"
+   ],
+   "existing_pr": true
+  },
+  "227-more-intword-words": {
+   "type": "feature",
+   "refs": [
+    "github:python-humanize/humanize#227"
+   ],
+   "tiers": [
+    "medium",
+    "low",
+    "high"
+   ]
+  },
+  "214-natural-list-conjunction": {
+   "type": "feature",
+   "refs": [
+    "github:python-humanize/humanize#214",
+    "slack:C0APPDEV/1791300000.000100"
+   ],
+   "tiers": [
+    "medium",
+    "low"
+   ],
+   "existing_pr": true
+  }
+ },
+ "ignored": [
+  "github:python-humanize/humanize#400",
+  "slack:C0APPDEV/1791400000.000100",
+  "slack:C0APPDEV/1791500000.000100"
+ ],
+ "ambiguous_pairs": [
+  [
+   "github:python-humanize/humanize#356",
+   "github:python-humanize/humanize#227"
+  ]
+ ],
+ "notes": "#400 is closed not-planned as a duplicate of PR #346 and is already fixed on main (intword(10**24-1) == '1.0 septillion'). Most open bugs already have fix PRs in flight."
+}

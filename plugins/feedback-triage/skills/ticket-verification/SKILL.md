@@ -5,51 +5,41 @@ description: Use when re-checking, fact-checking, or refreshing an already-track
 
 # Ticket Verification — Keep Tracked Tickets True
 
-Recheck keeps the queue honest between intake runs. It works **only on tickets
-that already exist** and it changes **only what the evidence shows**. Finding new
-feedback is intake's job, not this one: if you see an untracked report, mention
-its URL in `notes` and stop there.
+Work only on the ticket you were given; change only what evidence shows. New
+feedback is intake's job: an untracked report goes in `notes` as a URL, nothing
+more.
 
-## What to check, per ticket
+## Check
 
-1. **Every source still exists and its state.** GitHub issue open/closed (and the
-   close reason), Slack thread still there. Record each in `upstream.states`.
-2. **New information on the sources since the last check:** repro steps, versions,
-   workarounds, "fixed for me", "still broken on 2.5", a maintainer answer.
-3. **Fixed upstream?** A merged PR or commit that references the issue or its
-   error text; a release note naming it; our own `ft/<ID>-*` PR merged.
-   Confirm the fix reached the base branch — "a PR exists" is not "resolved".
-4. **Fact-check the ticket against the sources:** does the title still state the
-   user problem? Does the summary claim anything the sources don't say? Is the
-   type right? Are severity/environment supported?
+1. **Each source:** still exists? open/closed and why? Record in `upstream.states`.
+2. **New since the last check** (`verification.last_checked_at`, else
+   `created_at`): repro steps, versions, workarounds, "fixed for me", "still broken
+   on 2.5", maintainer answers, new +1s/👍.
+3. **Fixed?** A merged PR or commit on the base branch that references the issue
+   or its error text, or our own `investigation.pr_url` merged. A PR that exists
+   but is not merged is not a fix.
+4. **Fact-check the ticket:** title still the user problem, summary claims only
+   what sources say, type/severity/environment supported.
 
 ## Verdicts
 
-| Verdict | When | Effect |
-|---|---|---|
-| `confirmed` | nothing material changed | timestamps the check |
-| `corrected` | a ticket field is wrong or outdated | `patch` applied (title, summary, severity, environment, labels, component only) |
-| `resolved` | fixed on the base branch, or every source closed as fixed/completed | ticket closes; next digest announces it |
-| `needs-reinvestigation` | new info that changes the repro, root cause, tier, or recommendation — or a resolved ticket reopened | ticket returns to the investigation queue |
-| `invalid` | sources show it is not a bug/feature (working as designed *and* the reporter agreed, spam, wrong product) | ticket closes |
+| Verdict | When |
+|---|---|
+| `confirmed` | nothing material changed (silence is not resolution) |
+| `corrected` | a field is wrong or stale → `patch` with any of: title, summary, type, severity, environment, labels, component, `plus_ones` (`{ref: [names]}`) |
+| `resolved` | fixed on the base branch, or every source closed as completed |
+| `needs-reinvestigation` | new info would make the investigation file wrong (repro, cause, tier, recommendation), or a resolved ticket reopened |
+| `invalid` | not a bug/feature after all (working as designed and the reporter agreed, spam, wrong product) |
 
-- A source closed as "not planned" / "won't fix" is **not** `resolved` — it is a
-  decision; `confirmed` with a note, so the team sees it.
-- Silence is not resolution. No activity for months → `confirmed`.
-- When in doubt between `confirmed` and `needs-reinvestigation`, ask: would the
-  investigation file give a wrong answer now? Only then reinvestigate.
+Closed as "not planned"/"won't fix" is a decision, not a fix → `confirmed` with a
+note.
 
-## Evidence
+## Output
 
-Every verdict lists what was checked: `["acme/app#12: open, 2 new comments
-(v2.5 still affected)", "searched merged PRs for 'refresh token': none"]`. `ft.py`
-refuses verdicts without evidence and refuses patches to any other field.
-
-## Verdict JSON
+Every verdict lists what was checked; `ft.py` refuses verdicts without evidence.
 
 ```json
-{"id": "FT-0007", "verdict": "confirmed|corrected|resolved|needs-reinvestigation|invalid",
- "patch": {"summary": "..."},
- "upstream": {"states": {"github:acme/app#12": "open"}, "fixed_by": "<url or null>"},
- "notes": "<≤ 2 sentences>", "evidence": ["..."]}
+{"id": "FT-0007", "verdict": "…", "patch": {},
+ "upstream": {"states": {"github:acme/app#12": "open"}, "fixed_by": null},
+ "notes": "<≤ 2 sentences>", "evidence": ["acme/app#12: open, 2 new comments (2.5 still affected)"]}
 ```

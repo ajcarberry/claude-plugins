@@ -74,11 +74,15 @@ class Intake(unittest.TestCase):
     def test_cross_link_from_excerpt(self):
         a = self.e.j("upsert", "--json", cand(12))
         slack = "https://acme.slack.com/archives/C01ABC/p1700000000000100"
-        b = self.e.j("upsert", "--json", cand(slack, excerpt="same as https://github.com/acme/app/issues/12 for me",
-                                              author="lee"))
+        c = cand(slack, excerpt="same as https://github.com/acme/app/issues/12 for me", author="lee")
+        # a link is evidence, not a verdict: dry-run surfaces it, a blind upsert is refused
+        self.assertEqual(self.e.j("upsert", "--dry-run", "--json", c)["action"], "links-tracked")
+        self.assertEqual(self.e.run("upsert", "--json", c, ok=False).returncode, 2)
+        # duplicate_of may name the original's URL — no predicted ticket ids
+        b = self.e.j("upsert", "--json", json.dumps(dict(json.loads(c), duplicate_of="https://github.com/acme/app/issues/12")))
         self.assertEqual((b["action"], b["id"]), ("linked", a["id"]))
         t = self.e.j("get", a["id"])
-        self.assertEqual([s["relation"] for s in t["sources"]], ["original", "mention"])
+        self.assertEqual([s["relation"] for s in t["sources"]], ["original", "duplicate"])
         self.assertEqual(t["sources"][1]["ref"], "slack:C01ABC/1700000000.000100")
 
     def test_duplicate_of_and_merge(self):
@@ -94,6 +98,73 @@ class Intake(unittest.TestCase):
         # the merged-away source now resolves to the surviving ticket
         self.assertEqual(self.e.j("upsert", "--json", cand(13))["id"], a["id"])
         self.assertTrue(self.e.j("validate")["ok"])
+
+    def test_distinct_despite_link(self):
+        a = self.e.j("upsert", "--json", cand(12))
+        c = json.loads(cand(30, excerpt="not like https://github.com/acme/app/issues/12, a new crash"))
+        c["distinct"] = True
+        self.assertEqual(self.e.j("upsert", "--json", json.dumps(c))["action"], "created")
+        self.assertNotEqual(self.e.j("get", "FT-0002")["id"], a["id"])
+
+    def test_split_refs(self):
+        self.e.j("upsert", "--json", cand(12))
+        c = json.loads(cand(12, title="Second issue in the same report"))
+        c["source"]["ref"] = "github:acme/app#12~2"
+        self.assertEqual(self.e.j("upsert", "--json", json.dumps(c))["action"], "created")
+
+    def test_move_source(self):
+        a = self.e.j("upsert", "--json", cand(12))["id"]
+        b = self.e.j("upsert", "--json", cand(13, title="Other bug", author="kim"))["id"]
+        self.e.j("upsert", "--json", cand(14, duplicate_of=a, author="x"))
+        self.e.j("move-source", "acme/app#14", "--to", b, "--reason", "wrong ticket")
+        self.assertEqual(len(self.e.j("get", b)["sources"]), 2)
+        self.assertTrue(self.e.j("validate")["ok"])
+
+    def test_merge_chain_and_double_merge(self):
+        ids = [self.e.j("upsert", "--json", cand(n, author=f"u{n}"))["id"] for n in (1, 2, 3)]
+        self.e.j("merge", ids[0], ids[1], "--reason", "same")
+        self.e.j("merge", ids[1], ids[2], "--reason", "same")
+        self.assertEqual(self.e.run("merge", ids[0], ids[2], "--reason", "again", ok=False).returncode, 2)
+        self.assertEqual(self.e.j("get", ids[0])["duplicate_of"], ids[2])  # re-pointed
+        r = self.e.j("upsert", "--json", cand(9, duplicate_of=ids[0], author="z"))
+        self.assertEqual(r["id"], ids[2])  # whole chain followed
+        self.assertTrue(self.e.j("validate")["ok"])
+
+    def test_rereading_updates_momentum(self):
+        a = self.e.j("upsert", "--json", cand(12))["id"]
+        c = json.loads(cand(12)); c["source"]["plus_ones"] = ["kim", "lee"]
+        self.assertTrue(self.e.j("upsert", "--json", json.dumps(c))["refreshed"])
+        self.assertEqual(self.e.j("get", a)["sources"][0]["plus_ones"], ["kim", "lee"])
+
+    def test_reopened_issue_is_feedback_again(self):
+        self.e.j("ignore", "--ref", "acme/app#40", "--reason", "closed: fixed upstream")
+        c = json.loads(cand(40)); c["source"]["state"] = "open"
+        self.assertEqual(self.e.j("upsert", "--json", json.dumps(c))["action"], "created")
+
+    def test_search_finds_well_raised_ticket(self):
+        a = self.e.j("upsert", "--json", cand(12))["id"]
+        for n in range(20, 26):
+            self.e.j("upsert", "--json", cand(n, duplicate_of=a, author=f"u{n}",
+                                               excerpt="lots of unrelated words about dashboards and widgets"))
+        self.assertEqual(self.e.j("search", "login", "sso", "timeout")[0]["id"], a)
+
+    def test_related_ignores_common_words(self):
+        mk = lambda n, title, who: self.e.j("upsert", "--json", cand(n, title=title, author=who))["id"]
+        a = mk(1, "intword prints huge decillion counts", "a")
+        b = mk(2, "More intword names beyond decillion", "b")
+        mk(3, "Export fails with an error", "c")
+        mk(4, "Login fails with an error", "d")
+        mk(5, "Sync fails with an error", "e")
+        claimed = {c["id"]: c["related"] for c in self.e.j("claim")["claimed"]}
+        self.assertEqual(claimed[a], [b])
+        self.assertEqual(claimed["FT-0003"], [])
+        self.assertEqual(self.e.j("related", a)[0]["id"], b)
+
+    def test_passive_lint_ignores_adjectives(self):
+        r = dict(GOOD_REPORT, what="The issue is open and the build is green. The file is often empty.")
+        self.assertEqual(self.e.j("lint", "--json", json.dumps(r))["warnings"], [])
+        r = dict(GOOD_REPORT, what="The token is rejected by the server.")
+        self.assertTrue(self.e.j("lint", "--json", json.dumps(r))["warnings"])
 
     def test_ignore(self):
         self.e.j("ignore", "--ref", "acme/app#99", "--reason", "question, answered")
@@ -179,7 +250,8 @@ class Lifecycle(unittest.TestCase):
         self.e.j("pr", self.id, "--url", "https://github.com/acme/app/pull/7")
         text = open(os.path.join(self.e.dir, next(f["file"] for f in self.e.j("render")["files"] if f["kind"] == "ticket"))).read()
         self.assertIn("🔧 PR ready", text)
-        self.assertIn("|👉 Review the PR>", text)
+        self.assertIn("👉 Review the PR: https://github.com/acme/app/pull/7", text)
+        self.assertNotIn("<http", text)  # paste-ready: no API-only <url|label> markup
         self.assertEqual(self.e.j("get", self.id)["spiciness"]["factors"]["readiness"], 1)
         mcp = {"hook_event_name": "PreToolUse", "tool_name": "mcp__github__create_pull_request",
                "tool_input": {"head": "ft/FT-0001-sso-refresh"}}
@@ -217,6 +289,83 @@ class Lifecycle(unittest.TestCase):
             "upstream": {"states": {"github:acme/app#12": "closed"}, "fixed_by": "https://github.com/acme/app/pull/40"}}))
         self.assertEqual(r["status"], "resolved")
         self.assertEqual(self.e.j("due", "recheck", "--min-age-hours", "1"), [])
+
+    def test_new_report_reopens_resolved(self):
+        self.investigate()
+        self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "resolved", "evidence": ["x"]}))
+        self.e.j("upsert", "--json", cand(77, duplicate_of=self.id, author="new"))
+        self.assertEqual(self.e.j("get", self.id)["status"], "needs-reinvestigation")
+
+    def test_existing_pr_defers_and_renders(self):
+        self.e.j("claim")
+        res = {"id": self.id, "complexity": {"tier": "low", "rationale": "one line"}, "impact": 2, "reach": 2,
+               "repro": "reproduced", "investigation_file": self.inv,
+               "existing_pr": {"url": "https://github.com/acme/app/pull/9", "verdict": "fixes"}}
+        self.assertEqual(self.e.j("investigated", "--json", json.dumps(res))["next"], "report")
+        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, recommendation="Review and merge the existing PR.")))
+        out = self.e.j("render")
+        text = open(os.path.join(self.e.dir, next(f["file"] for f in out["files"] if f["kind"] == "ticket"))).read()
+        self.assertIn("🔗 PR exists", text)
+        self.assertIn("https://github.com/acme/app/pull/9", text)
+        paste = open(os.path.join(self.e.dir, out["paste"])).read()
+        self.assertIn("reply in thread", paste)
+        self.e.j("sent", out["run"], "--all")
+        self.assertEqual(self.e.j("get", self.id)["status"], "reported")
+
+    def test_backslash_in_finding_renders(self):
+        self.investigate()
+        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, findings=[r"It fails on `C:\Users\dana` paths."])))
+        out = self.e.j("render")
+        text = open(os.path.join(self.e.dir, next(f["file"] for f in out["files"] if f["kind"] == "ticket"))).read()
+        self.assertIn("C:\\Users", text)
+
+    def test_sent_survives_status_change_after_render(self):
+        self.investigate()
+        self.e.j("report-set", self.id, "--json", json.dumps(GOOD_REPORT))
+        out = self.e.j("render")
+        self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "needs-reinvestigation",
+                                                        "evidence": ["new info"]}))
+        self.e.j("claim")
+        self.e.j("sent", out["run"], "--all")
+        t = self.e.j("get", self.id)
+        self.assertEqual((t["status"], t["reported"]["count"]), ("investigating", 1))
+        self.e.run("sent", out["run"], "--all", ok=False)  # run already moved; no double count
+        self.assertEqual(self.e.j("get", self.id)["reported"]["count"], 1)
+
+    def test_downgrade_returns_for_options_and_forbids_low(self):
+        self.investigate(tier="low", branch="ft/FT-0001-x")
+        self.e.j("review", self.id, "--verdict", "changes", "--notes", "misses edge case", "--downgrade")
+        t = self.e.j("get", self.id)
+        self.assertEqual((t["status"], t["investigation"]["prior_attempt"]), ("needs-reinvestigation", "ft/FT-0001-x"))
+        self.e.j("claim")
+        res = {"id": self.id, "complexity": {"tier": "low", "rationale": "r"}, "impact": 1, "reach": 1,
+               "repro": "reproduced", "investigation_file": self.inv, "branch": "ft/FT-0001-y"}
+        self.assertEqual(self.e.run("investigated", "--json", json.dumps(res), ok=False).returncode, 1)
+        res.update(complexity={"tier": "medium", "rationale": "r"}, options_count=2)
+        res.pop("branch")
+        self.e.j("investigated", "--json", json.dumps(res))
+
+    def test_existing_fix_forbids_duplicate_branch(self):
+        self.e.j("claim")
+        res = {"id": self.id, "complexity": {"tier": "low", "rationale": "r"}, "impact": 1, "reach": 1,
+               "repro": "reproduced", "investigation_file": self.inv, "branch": "ft/FT-0001-dup",
+               "existing_pr": {"url": "https://github.com/acme/app/pull/9", "verdict": "fixes"}}
+        self.assertEqual(self.e.run("investigated", "--json", json.dumps(res), ok=False).returncode, 1)
+
+    def test_failures_not_claims_count_toward_blocked(self):
+        self.investigate()
+        self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "needs-reinvestigation",
+                                                        "evidence": ["x"]}))
+        self.e.j("claim")
+        self.assertEqual(self.e.j("release", self.id, "--reason", "timeout")["status"], "new")
+
+    def test_resolved_drops_out_of_recheck_after_quiet_checks(self):
+        self.investigate()
+        v = {"id": self.id, "verdict": "resolved", "evidence": ["closed"]}
+        self.e.j("recheck-apply", "--json", json.dumps(v))
+        for _ in range(2):
+            self.e.j("recheck-apply", "--json", json.dumps(dict(v, verdict="confirmed")))
+        self.assertEqual(self.e.j("due", "recheck", "--min-age-hours", "0"), [])
 
     def test_resolved_is_announced_once(self):
         self.investigate()
@@ -293,6 +442,20 @@ class Persistence(unittest.TestCase):
         sh(b, "save", "intake b")
         sh(a, "pull")
         self.assertIn("FT-0002", ft(a, "list"))
+        # two runners allocate the same id → conflict is recovered, not wedged
+        ft(a, "upsert", "--json", cand(3, author="p"))
+        ft(b, "upsert", "--json", cand(4, author="q"))
+        sh(a, "save", "a")
+        r = subprocess.run([state, "save", "b"], capture_output=True, text=True,
+                           env={**env, "FT_PROJECT_DIR": b})
+        self.assertEqual(r.returncode, 3, r.stderr)
+        self.assertIn('"conflict":true', r.stdout)
+        sh(b, "pull")
+        self.assertIn("ok", ft(b, "validate"))  # clean queue, no conflict markers
+        ft(b, "upsert", "--json", cand(4, author="q"))  # re-run the phase
+        self.assertIn('"pushed":true', sh(b, "save", "b again").stdout)
+        sh(a, "pull")
+        self.assertEqual(ft(a, "list", "--format", "ids").split(), ["FT-0001", "FT-0002", "FT-0003", "FT-0004"])
         # the product branch never sees queue files
         status = subprocess.run(["git", "-C", a, "status", "--porcelain"], capture_output=True, text=True).stdout
         self.assertNotIn(".feedback-triage", status)
@@ -311,13 +474,6 @@ class Hooks(unittest.TestCase):
         p = self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Write",
                          "tool_input": {"file_path": os.path.join(self.e.dir, ".feedback-triage", "investigations", "FT-0001.md")}})
         self.assertEqual(p.returncode, 0)
-
-    def test_slack_report_must_come_from_outbox(self):
-        payload = {"hook_event_name": "PreToolUse", "tool_name": "mcp__slack__slack_send_message",
-                   "tool_input": {"channel_id": "C1", "text": "🌶️ *FT-0001 · hand written*"}}
-        self.assertEqual(self.e.hook(payload).returncode, 2)
-        payload["tool_input"]["text"] = "lunch at noon?"
-        self.assertEqual(self.e.hook(payload).returncode, 0)
 
 
 if __name__ == "__main__":

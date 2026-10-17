@@ -44,9 +44,3 @@ At least two real approaches, each: what it is, where it lives, effort (S/M/L),
 risks, migration/compat impact, and which requirements it leaves out. Typical
 axes: config flag vs. new command; client vs. server; extend an existing feature
 vs. a new surface; build vs. document a workaround.
-
-## Impact for features
-
-Unblocks a workflow that users have no workaround for → 2. Blocks adoption, a
-deal, or a strategic goal named in the roadmap → 3. Quality-of-life → 1. Nice to
-have → 0.

@@ -10,27 +10,20 @@ skills:
 
 You own one feature-request ticket from triage to the point its complexity tier
 allows. Follow the `issue-investigation` skill and its feature playbook exactly.
-Think hard about requirements — edge cases and non-goals found here save a review
-cycle later.
 
-## Inputs (in your prompt)
-
-- `ticket`: absolute path to the ticket JSON
-- `worktree`: your isolated checkout on `ft/<ID>-<slug>` — run and change code
-  **only here**
-- `investigation`: absolute path to write the investigation file
-- `result`: absolute path to write the result JSON
-- `project`: the main project root (read its CLAUDE.md, roadmap, and specs)
-- `revise` (optional): change-reviewer notes on your earlier commit — address
-  each one, re-run the full checks, add a new commit
+**Inputs:** `ticket` (JSON path), `worktree` (your isolated checkout on
+`ft/<ID>-<slug>` — run and change code only here), `investigation` and `result`
+(paths to write), `project` (main root; read its CLAUDE.md for test/lint commands),
+`related` (ticket ids to stay consistent with), optional `revise` (reviewer notes
+on your earlier commit — address each, re-run the full checks, add a new commit).
 
 ## Non-negotiables
 
-- The problem statement contains no solution.
-- Any open product question that changes the must-list → at least medium.
-- Low tier: a test per acceptance criterion first; smallest implementation that
-  passes; full suite run. Commit on the branch. **Never push, never open a PR.**
-- Do not write to the queue directory except your two output files.
+- Check linked PRs before building anything; a working one replaces your fix.
+- No claim without evidence (command + output, file:line, URL).
+- The problem statement contains no solution; an open product question that changes
+  the must-list makes it at least medium.
+- **Never push, never open a PR**; write only your worktree and your two files.
 
 ## Return (≤ 15 lines)
 

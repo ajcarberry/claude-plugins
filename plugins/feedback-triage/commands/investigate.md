@@ -1,81 +1,64 @@
 ---
-description: Phase 2 — fan out one subagent per tracked ticket to triage and research it; complexity decides the depth (high → findings, medium → options, low → reviewed change request)
-allowed-tools: Bash, Read, Write, Glob, Grep, Task, Skill, ToolSearch, AskUserQuestion
+description: Phase 2 — fan out one subagent per tracked ticket to triage and research it; complexity decides the depth (high → findings, medium → options, low → reviewed change request), and an existing fix PR is reviewed instead of duplicated
+allowed-tools: Bash, Read, Write, Glob, Grep, Task, Skill, ToolSearch
 argument-hint: "[ticket ids] [--limit N] [--no-pr]"
 ---
 
 # Investigate — One Ticket, One Investigator, Tier-Gated Depth
 
-Load `Skill: feedback-triage:ticket-queue`. Investigators load
-`issue-investigation` themselves. `ft` below means
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ft.py`; `wt` means
-`${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh`. Dispatch rules:
-[orchestration.md](../references/orchestration.md). Tier rules:
-[complexity.md](../references/complexity.md).
+`ft` = `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ft.py`; `wt` =
+`${CLAUDE_PLUGIN_ROOT}/scripts/worktree.sh`. Exit 1 = fix the input; exit 2 = a rule
+refused. Subagents get paths, never conversation history, and never write the queue.
 
-## Step 1: Claim
+## 1. Claim
 
-- `state.sh pull` (`${CLAUDE_PLUGIN_ROOT}/scripts/state.sh`).
-- `ft claim --limit <--limit or investigate.max_per_run>` (`--ids` from
-  `$ARGUMENTS` if given). Nothing claimed → `Investigate: queue is clear.` **STOP**.
-- Run id `investigate-<UTC yyyymmddThhmmss>`; `ft paths` for absolute paths.
+`state.sh pull` (`${CLAUDE_PLUGIN_ROOT}/scripts/state.sh`), then `ft claim --limit
+<--limit or investigate.max_per_run>` (`--ids` from `$ARGUMENTS`). Nothing claimed →
+`Investigate: queue is clear.` **STOP** — unless `ft due review` lists low tickets
+whose review never finished (a crashed run): resume those at step 4. Run dir
+`<runs>/investigate-<UTC ts>/`.
 
-## Step 2: Dispatch (fan out)
+## 2. Dispatch (parallel, cap `investigate.max_parallel`)
 
-Per claimed ticket, in parallel (cap `investigate.max_parallel`; tickets naming
-the same component go one after another):
-1. `wt create <ID> <slug of title>` → worktree path.
-2. Dispatch `bug-investigator` (type bug) or `feature-analyst` (type feature)
-   with: ticket path, worktree, `investigation` = `<investigations>/<ID>.md`,
-   `result` = `<runs>/<run>/result-<ID>.json`, project root. Nothing else.
+Tickets listed in each other's `related` go one after another (later ones can read
+earlier findings). Per ticket:
+1. `wt create <ID> <slug of title>` → worktree (runs `investigate.setup` if set).
+2. `bug-investigator` (bug) or `feature-analyst` (feature) with: ticket path,
+   worktree, `investigation` = `<investigations>/<ID>.md`, `result` =
+   `<run dir>/result-<ID>.json`, project root, `related` ids (from the claim), and
+   `prior_attempt` if the ticket has one.
 
-## Step 3: Apply each result
+## 3. Apply
 
-- `BLOCKED` or no result file → `ft release <ID> --reason "<concern>"` (2nd failure
-  becomes `blocked`); `wt discard <ID>`.
-- `DONE` → `ft investigated --json <result>`. Exit 1 names the missing contract
-  piece (e.g. medium without 2 options) → redispatch once with that text as
-  `revise`; still refused → release.
-- Tier **high/medium** → `wt discard <ID>` (the investigation file holds the repro).
-- Tier **low** → Step 4.
+- `BLOCKED` / no result → `ft release <ID> --reason "<concern>"` (2nd failure →
+  `blocked`); `wt discard <ID>`.
+- `DONE` → `ft investigated --json <result>`. Exit 1 → redispatch once with the
+  error text; still refused → release.
+- No branch built (high, medium, or an existing PR covers it) → `wt discard <ID>`.
+- Branch built (low) → step 4.
 
-## Step 4: Low tier — independent review, then change request
+## 4. Low tier — independent review, then change request
 
-1. Dispatch `change-reviewer` with ticket, investigation, worktree, branch, base.
+1. `change-reviewer` with ticket, investigation, worktree, branch, base.
 2. `approved` → `ft review <ID> --verdict approved --notes "<one line>"`.
-   `changes` (first time) → `ft review <ID> --verdict changes --notes …`, redispatch
-   the investigator with `revise` = the notes, then review again. Second `changes`
-   → `ft review <ID> --verdict changes --notes … --downgrade` (becomes medium; the
-   attempt stays as an option) and `wt discard <ID>`.
-3. Approved and `investigate.open_prs` true and no `--no-pr`:
-   `git -C <worktree> push -u origin <branch>`, then open the PR (`gh pr create`
-   or the GitHub MCP `create_pull_request`) against the base, draft if
-   `investigate.draft_prs`, title `<ID>: <ticket title>`, body from
-   [pr-body.md](../templates/pr-body.md) filled from the investigation. Then
-   `ft pr <ID> --url <url>` and `wt remove <ID>`. Not opening a PR (`--no-pr`,
-   `open_prs: false`, no write access) → `wt remove <ID>` (the branch stays local,
-   and the report shows the options, not a PR). The hook blocks the push/PR if
-   the ticket is not low tier with an approved review — fix the state, never
-   bypass.
+   `changes` → record it, redispatch the investigator with `revise` = the notes,
+   review again. Second `changes` (or the revise is BLOCKED) → `ft review <ID>
+   --verdict changes --notes … --downgrade` and `wt remove <ID>` (branch kept). The
+   ticket returns as `needs-reinvestigation`; the next claim must classify it
+   medium with the attempt as one option.
+3. Approved, `investigate.open_prs` true, no `--no-pr`: `git -C <worktree> push -u
+   origin <branch>`; open the PR (`gh pr create` or GitHub MCP) against base, draft
+   if `investigate.draft_prs`, title `<ID>: <title>`, body from
+   [pr-body.md](../templates/pr-body.md); `ft pr <ID> --url <url>`; `wt remove <ID>`.
+   Otherwise `wt remove <ID>` (branch stays local). The hook refuses push/PR unless
+   the ticket is low with an approved review — fix the state, never bypass.
 
-## Step 5: Validate, persist, summarise
+## 5. Validate, persist, summarise
 
 `ft validate` → `state.sh save "investigate: <n> done"`.
 
 ```
-Investigate <run-id>: <n> tickets
-  🧠 high <n> · 🧭 medium <n> · 🔧 low <n> (PRs: <urls>)
-  Repro: <n> reproduced · <n> not reproduced   Blocked: <ids or none>
-  Reclassified by review: <ids or none>
-
+Investigate <run>: <n> tickets — high <n> · medium <n> · low <n> · existing PR <n>
+  Repro: <n> reproduced · <n> not   PRs opened: <urls or none>   Blocked: <ids or none>
   Next: /feedback-triage:report
 ```
-
-## Error Handling
-
-| Scenario | Action |
-|----------|--------|
-| `wt create` fails (base missing, dirty) | Release the ticket with the error; continue the batch |
-| Investigator times out | Treat as BLOCKED |
-| Push/PR refused by hook | Read the reason; the ticket state is wrong — fix it through `ft`, never `FT_SKIP_GATE` |
-| No GitHub write access | Keep the branch local, note "PR not opened: <reason>" in the summary; report still shows options |

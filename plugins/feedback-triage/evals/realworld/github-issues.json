@@ -1,0 +1,283 @@
+[
+ {
+  "number": 431,
+  "title": "intcomma returns scientific notation for large floats",
+  "body": "`intcomma()` returns scientific notation for floats of 1e16 and above, without commas. `intcomma(1e15)` is fine but `intcomma(1e16)` returns `'1e+16'` and `intcomma(1.5e20)` returns `'1.5e+20'`. Passing `ndigits=0` avoids it. Cause: float comma formatting follows `repr()`, which switches to exponent notation at 1e16. Small floats too: `intcomma(0.00001)` returns `'1e-05'`.",
+  "author": {
+   "login": "TheNetherWatcher"
+  },
+  "createdAt": "2026-10-02T09:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "labels": [],
+  "url": "https://github.com/python-humanize/humanize/issues/431",
+  "comments": [],
+  "linkedPullRequests": [
+   {
+    "number": 432,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/432"
+   },
+   {
+    "number": 449,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/449"
+   }
+  ]
+ },
+ {
+  "number": 423,
+  "title": "metric() adds a digit when a value rounds into quetta",
+  "body": "Calling `humanize.metric()` on values just below the quetta threshold (9.996e30, 9.996e31, 9.996e32), and 9999 for comparison. Expected three significant digits like `metric(9999)` → `'10.0 k'`. 9.996e32 has no prefix beyond quetta so it should fall back to scientific notation, e.g. `'1.00 x 10³³'`. Instead output gains an extra digit and the rounding carry stops at exponent 30. macOS, Python 3.14, main branch.",
+  "author": {
+   "login": "SashaMIT"
+  },
+  "createdAt": "2026-10-01T12:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "labels": [],
+  "url": "https://github.com/python-humanize/humanize/issues/423",
+  "comments": [],
+  "linkedPullRequests": [
+   {
+    "number": 424,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/424"
+   },
+   {
+    "number": 450,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/450"
+   }
+  ]
+ },
+ {
+  "number": 419,
+  "title": "Several number functions raise OverflowError on integers larger than a float",
+  "body": "Most functions in `humanize.number` call `float()` before `int()` to check for NaN/infinity. For integers beyond float range this raises `OverflowError`, which `except (TypeError, ValueError)` does not catch. Affects `apnumber` and `fractional` (raise), `scientific` (raises), and `ordinal`, `intword`, `clamp`, `metric` (show `+Inf` or TypeError in some cases). I plan a PR for `apnumber` and `fractional`; suggest Decimal-based formatting for `scientific`.",
+  "author": {
+   "login": "itzzdev09"
+  },
+  "createdAt": "2026-10-01T08:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "labels": [],
+  "url": "https://github.com/python-humanize/humanize/issues/419",
+  "comments": [],
+  "linkedPullRequests": [
+   {
+    "number": 414,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/414"
+   },
+   {
+    "number": 404,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/404"
+   },
+   {
+    "number": 415,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/415"
+   },
+   {
+    "number": 332,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/332"
+   }
+  ]
+ },
+ {
+  "number": 400,
+  "title": "intword() drops the rounding carry for values >= 10^24 (renders '1000.0 sextillion' instead of '1.0 septillion')",
+  "body": "`intword(10**24 - 1)` returns `'1000.0 sextillion'` instead of `'1.0 septillion'`; same at 10^27, 10^30, 10^33. Root cause: `if not largest_ordinal and rounded_value * power == powers[ordinal + 1]:` compares a float to an exact int; `float(10**k)` is inexact for k >= 24. Proposed: `rounded_value >= powers[ordinal + 1] // power`. Not overlapping #356.",
+  "author": {
+   "login": "Sreekant13"
+  },
+  "createdAt": "2026-09-16T10:00:00Z",
+  "state": "CLOSED",
+  "stateReason": "NOT_PLANNED",
+  "labels": [],
+  "url": "https://github.com/python-humanize/humanize/issues/400",
+  "comments": [
+   {
+    "author": {
+     "login": "Sreekant13"
+    },
+    "createdAt": "2026-09-16T14:00:00Z",
+    "body": "Duplicate of PR #346 (open since 2026-07-06), which fixes the same carry bug with the same diagnosis. Closing in favour of it."
+   }
+  ],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 379,
+  "title": "precisedelta() silently drops the sign of negative timedeltas",
+  "body": "`precisedelta(timedelta(seconds=-3661))` and `precisedelta(timedelta(seconds=3661))` both give `'1 hour, 1 minute and 1 second'`. Tested humanize 4.16.0 and master on Python 3.13; docstring and tests don't cover negative input. Options: keep the sign with a leading minus like `str(timedelta)`, or raise / document non-negative only. Happy to send a PR.",
+  "author": {
+   "login": "Mukller"
+  },
+  "createdAt": "2026-08-24T10:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "labels": [],
+  "url": "https://github.com/python-humanize/humanize/issues/379",
+  "comments": [],
+  "linkedPullRequests": [
+   {
+    "number": 380,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/380"
+   },
+   {
+    "number": 455,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/455"
+   }
+  ]
+ },
+ {
+  "number": 366,
+  "title": "`naturalsize()` raises `ValueError` for custom format strings with text",
+  "body": "`naturalsize(1500, format='Size: %.1f')` worked in 4.15.0 but raises `ValueError: could not convert string to float: 'Size: 1.5'` in 4.16.0 and main. Caused by #329 (unit rollover), which passes the whole formatted string to `float()`. Fix: only roll over when the result is purely numeric, or compute the rounded mantissa separately. Please add a regression test with a prefix and a suffix. Found via differential testing.",
+  "author": {
+   "login": "APITester26"
+  },
+  "createdAt": "2026-07-31T10:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "labels": [],
+  "url": "https://github.com/python-humanize/humanize/issues/366",
+  "comments": [],
+  "linkedPullRequests": [
+   {
+    "number": 367,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/367"
+   }
+  ]
+ },
+ {
+  "number": 356,
+  "title": "intword: values between 10^36 and a googol format as huge decillion counts, and rounding to the next unit does not carry",
+  "body": "`intword` formats values between 10^36 and a googol (10^100) as enormous decillion counts: `intword(10**50)` is a 17-digit decillion count, and a value just below a googol never carries to `'1.0 googol'`. Similar to the `metric()` boundary bug fixed in #328. Options: fall back to `str(value)` in that range, or carry correctly and fall back when no larger unit fits. I can write regression tests once you pick a behaviour.",
+  "author": {
+   "login": "anp0429"
+  },
+  "createdAt": "2026-07-21T10:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "labels": [],
+  "url": "https://github.com/python-humanize/humanize/issues/356",
+  "comments": [
+   {
+    "author": {
+     "login": "hugovk"
+    },
+    "createdAt": "2026-08-04T09:00:00Z",
+    "body": "Why did you close this?"
+   },
+   {
+    "author": {
+     "login": "anp0429"
+    },
+    "createdAt": "2026-08-04T10:00:00Z",
+    "body": "Sorry, cleaning up my issues. It should stay open; PR #364 addresses it. Reopening; happy to add the boundary tests to that PR."
+   }
+  ],
+  "linkedPullRequests": [
+   {
+    "number": 364,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/364"
+   }
+  ]
+ },
+ {
+  "number": 277,
+  "title": "Percentages and ratios",
+  "body": "If I'm not mistaken there is no feature yet to humanize a ratio (between 0 and 1) or a percentage (between 0-100). It can be just one function to handle both, with two possible inputs (ratio= or percent=), returning a truncated percent string, optionally with a decimal comma like `12,5%`, precision customizable in number of decimals like `precisedelta`.",
+  "author": {
+   "login": "smarie"
+  },
+  "createdAt": "2025-11-20T10:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "labels": [],
+  "url": "https://github.com/python-humanize/humanize/issues/277",
+  "comments": [],
+  "linkedPullRequests": [
+   {
+    "number": 413,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/413"
+   }
+  ]
+ },
+ {
+  "number": 227,
+  "title": "Proposal for adding more 'intword' words",
+  "body": "I made an idle game with huge numbers and humanize stops humanizing after decillion. I added words for larger powers to number.py, from undecillion (10^36) up to googol (10^100), e.g. `NS_(\"undecillion\", \"undecillion\")`, `NS_(\"googol\", \"googol\")`. Used ChatGPT for the longer names. Can this go in a new version?",
+  "author": {
+   "login": "The-Robby"
+  },
+  "createdAt": "2025-01-21T10:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "labels": [
+   {
+    "name": "enhancement"
+   }
+  ],
+  "url": "https://github.com/python-humanize/humanize/issues/227",
+  "comments": [],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 214,
+  "title": "Proposal for additional `conjunction` parameter in `natural_list` function",
+  "body": "Proposal: a parameter to choose 'and' or 'or' in `natural_list`. Originally a boolean `conjunction=True` ('and') / `False` ('or'): `natural_list([1, 2, 3])` → `'1, 2 and 3'`, `natural_list([1, 2, 3], conjunction=False)` → `'1, 2 or 3'`. i18n could be a separate issue. Is `conjunction` the best name?",
+  "author": {
+   "login": "dunossauro"
+  },
+  "createdAt": "2024-10-25T10:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "labels": [
+   {
+    "name": "enhancement"
+   }
+  ],
+  "url": "https://github.com/python-humanize/humanize/issues/214",
+  "comments": [
+   {
+    "author": {
+     "login": "hugovk"
+    },
+    "createdAt": "2024-10-25T11:00:00Z",
+    "body": "More general: let `conjunction` take any string, like 'or' or 'and also'. Name is open to change."
+   },
+   {
+    "author": {
+     "login": "dunossauro"
+    },
+    "createdAt": "2024-10-25T12:00:00Z",
+    "body": "Any-string is interesting but worries me for i18n. I still prefer `conjunction` over connector/joiner. I'll open a separate issue about empty lists."
+   },
+   {
+    "author": {
+     "login": "hugovk"
+    },
+    "createdAt": "2024-10-25T13:00:00Z",
+    "body": "natural_list has no i18n yet, so handle that separately. Later we can pre-bake 'and'/'or' and custom text can use gettext."
+   }
+  ],
+  "linkedPullRequests": [
+   {
+    "number": 316,
+    "state": "open",
+    "url": "https://github.com/python-humanize/humanize/pull/316"
+   }
+  ]
+ }
+]

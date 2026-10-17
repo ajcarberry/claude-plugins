@@ -1,86 +1,71 @@
 ---
 description: Phase 1 — ingest bug reports and feature requests from GitHub issues and Slack into the deduplicated ticket queue, linking every place each issue was raised
-allowed-tools: Bash, Read, Write, Glob, Grep, Task, Skill, ToolSearch, AskUserQuestion
+allowed-tools: Bash, Read, Write, Glob, Grep, Task, Skill, ToolSearch
 argument-hint: "[source ids | export file paths] [--since YYYY-MM-DD]"
 ---
 
 # Intake — Every Report, Tracked Once
 
-Load `Skill: feedback-triage:feedback-intake` and `Skill: feedback-triage:ticket-queue`.
-`ft` below means `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ft.py`. You are the
-orchestrator and the only queue writer —
-[orchestration.md](../references/orchestration.md).
+`ft` = `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ft.py` (JSON out; exit 1 = fix the
+input, exit 2 = a rule refused — change approach, don't retry blind). You are the
+only queue writer; queue files are never edited by hand.
 
-## Step 1: Preflight
+## 1. Preflight
 
-- `ft paths`. No index → run `/feedback-triage:setup` first; **STOP**.
+- `ft paths` — no index → tell the user to run `/feedback-triage:setup`; **STOP**.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/state.sh pull`.
-- Sources = `$ARGUMENTS` (source ids like `github:acme/app`, `slack:C0123`, or
-  export file paths) else every source in `ft config`. A configured source with
-  an `export` path is read from that file instead of the live API. None → say what was looked
-  for, point to setup, **STOP**.
-- Run id: `intake-<UTC yyyymmddThhmmss>`; scratch dir `<runs>/<run-id>/`.
+- Sources = `$ARGUMENTS` (`github:owner/repo`, `slack:C0123`, or export paths)
+  else `ft config` sources. A source with `export` is read from that file.
+- Run dir: `<runs>/intake-<UTC yyyymmddThhmmss>/`.
 
-## Step 2: Windows
+## 2. Read (fan out)
 
-Per source: `ft watermark get <source>`. Window start = watermark minus
-`intake.overlap_hours` (re-reading the overlap is safe — the ledger makes it
-idempotent); no watermark → now minus `intake.lookback_days`; `--since` overrides
-both. Export files have no watermark.
+Per source: `ft watermark get <source>`. Window `from` = watermark −
+`intake.overlap_hours` (overlap is safe: the ledger is idempotent); no watermark →
+`first_run: true`, `from` = now − `intake.lookback_days`; `--since` overrides.
+Dispatch one `source-reader` per source in parallel with source, window, `out` =
+`<run dir>/candidates-<slug>.json`, export path if any.
 
-## Step 3: Read (fan out)
+## 3. Deterministic pass
 
-Dispatch one `source-reader` agent per source, in parallel (cap
-`investigate.max_parallel`), each with: source, channel name, window, `out` =
-`<run dir>/candidates-<source-slug>.json`, and the export path if any. Wait for
-all. A reader that fails or returns `PARTIAL` keeps its source's watermark where
-it was — say so in the summary.
+Check every top-level item read is in `items`; if not, redispatch that reader once
+naming the gap. Then per item, **oldest `raised_at` first**:
+- `question`/`noise` → `ft ignore --ref <url> --reason "<class>: <reason>"`.
+- else `ft upsert --dry-run --json <item>`:
+  `exists` (refreshes +1s/state when run for real — run it) · `ignored` → done ·
+  `would-create` / `links-tracked` → step 4.
 
-## Step 4: Deterministic pass
+## 4. Judgment — same issue?
 
-For each candidates file, check every top-level item read appears in `items` (`len(items) ≥ read_count`) (mismatch → redispatch
-that reader once with the gap named). Then per item:
-- `question` / `noise` → `ft ignore --ref <url> --reason "<class>: <reason>"`.
-- `bug` / `feature` → `ft upsert --dry-run --json <item>`: `exists` / `ignored` →
-  done; `would-link` → apply with `ft upsert --json <item>`; `would-create` →
-  Step 5.
+For each remaining item, compare it with `ft search <key symptom words>` hits, any
+`links-tracked` ids, items already handled this run, and — since search is only
+word matching — the one-line titles from `ft list --status
+new,investigating,investigated,reported,needs-reinvestigation,blocked --format brief`.
 
-## Step 5: Judgment pass — same issue?
+- **Duplicate** → same user problem **and** same symptom or same want. Different
+  words, channels, reporters are expected. Upsert with `duplicate_of` = the
+  original's `source.ref` if it has one, else its **URL** (never a guessed FT id), and a one-sentence
+  `duplicate_reason` naming the shared symptom.
+- **Distinct** → same area, different symptom or want ("export is slow" vs
+  "export drops a row"); a feature that would fix a bug is distinct from the bug.
+  A message that links a tracked issue but describes something else → upsert with
+  `distinct: true`.
+- **Unsure** → distinct, with "Possibly related: <id>" in the summary. Merging
+  later is easy; splitting is not.
 
-For every would-create item, run `ft search <title + key symptom words>` and
-compare against the hits **and** the other would-create items in this run, per
-the skill's duplicate rules. Process oldest `raised_at` first, so the earliest
-report becomes the original. Then:
-- Duplicate → `ft upsert --json` with `duplicate_of` and `duplicate_reason` added.
-- Distinct → `ft upsert --json <item>` (add "Possibly related: FT-…" to the summary
-  when unsure).
-- Two existing tickets now clearly the same → `ft merge <newer> <older> --reason …`.
+Wrong link afterwards → `ft move-source <ref> --to <id> --reason …`. Two tracked
+tickets that are one issue → `ft merge <newer> <older> --reason …`.
 
-## Step 6: Advance watermarks
+## 5. Watermarks, validate, persist
 
-For each source whose reader returned `complete: true`:
-`ft watermark set <source> <high_water>`. Never for partial reads.
-
-## Step 7: Validate, persist, report
-
-`ft validate` must be ok (fix before continuing). `ft log intake --run <id>`.
-`state.sh save "intake: <n> new, <n> linked"`.
+Per source with `complete: true`: `ft watermark set <source> <high_water>` (never
+for partial reads). `ft validate` must be ok → `state.sh save "intake: <summary>"`.
 
 ```
-Intake <run-id>
-  Sources:  <read ok> (partial/failed: <list or none>)
-  Read:     <N items> → <new> new · <linked> linked to existing · <exists> already tracked · <ignored> not feedback
-  Multi-raised: <FT-… (×n), …>
-  Queue:    <total open> open (<new> awaiting investigation)
-
+Intake <run>: <N> read → <new> new · <linked> linked · <tracked> already tracked · <ignored> not feedback
+  Sources: <ok> (partial/failed: <list or none>)   Multi-raised: <FT-… ×n>
   Next: /feedback-triage:investigate
 ```
 
-## Error Handling
-
-| Scenario | Action |
-|----------|--------|
-| Source unreadable (auth, tool missing) | Skip it, keep its watermark, name it in the summary |
-| `ft` refuses an item (exit 1) | Fix the field it names, retry once; else log and list it as unprocessed |
-| `ft validate` fails | Stop before saving; report the problems |
-| `state.sh save` cannot push | Report it; local queue is intact; next pull rebases |
+Unreadable source → skip it, keep its watermark, name it. `ft validate` fails →
+stop before saving and report the problems.

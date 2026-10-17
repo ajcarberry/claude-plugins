@@ -21,15 +21,9 @@ floor: impact 3 → level ≥ 3
 bump:  ±1 level, only with a written bump_reason (recorded in history)
 ```
 
-| Level | Theme | Meaning for the eng team |
-|---|---|---|
-| 1 | 🌶️ Mild | Read when you have a minute. |
-| 2 | 🌶️🌶️ Medium | Worth a look this week. |
-| 3 | 🌶️🌶️🌶️ Hot | Plan it into the next sprint or review the PR today. |
-| 4 | 🌶️🌶️🌶️🌶️ Inferno | Look now. |
-
-Emoji and labels live in `templates/slack/theme.json` (project override:
-`.claude/feedback-triage/theme.json`).
+Level 1 = read when you have a minute · 2 = worth a look this week · 3 = plan it
+into the next sprint or review the PR today · 4 = look now. Emoji and labels:
+`templates/slack/theme.json`.
 
 ## Scoring discipline
 

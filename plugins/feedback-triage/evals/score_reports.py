@@ -46,9 +46,9 @@ def shape(text):
         elif line.startswith("• "): kinds.append("finding")
         elif line.startswith("*Do:*"): kinds.append("do")
         elif line.startswith("*Ask:*"): kinds.append("ask")
-        elif line.startswith("<") and "|" in line and ("👉" in line): kinds.append("pr")
+        elif line.startswith("👉 "): kinds.append("pr")
         elif line.startswith("🌿 `"): kinds.append("branch")
-        elif line.startswith("<"): kinds.append("sources")
+        elif re.match(r"^(🐙|💬|📎) ", line): kinds.append("sources")
         else: kinds.append("OTHER:" + line[:30])
     return kinds
 
@@ -83,9 +83,13 @@ def score_run(project, exp):
             if rep.get("recommendation"):
                 res["words"]["recommendation"].append(len(ft.words(rep["recommendation"])))
     outbox = os.path.join(st.dir, "reports")
+    seen = set()
     for dp, _, files in os.walk(outbox):
+        if "superseded" in dp:
+            continue
         for f in files:
-            if re.match(r"\d\d-FT-\d{4}\.txt$", f):
+            if re.match(r"\d\d-FT-\d{4}\.txt$", f) and f not in seen:
+                seen.add(f)
                 k = shape(open(os.path.join(dp, f)).read())
                 if any(x.startswith("OTHER") for x in k) or k[:3] != ["title", "badges", "what"]:
                     res["shape_bad"].append((f, k))
@@ -95,7 +99,7 @@ def score_run(project, exp):
 
 
 def main(dirs):
-    exp = json.load(open(os.path.join(HERE, "fixtures", "expected.json")))
+    exp = json.load(open(os.path.join(HERE, os.environ.get("SCENARIO", "fixtures"), "expected.json")))
     runs = [score_run(d, exp) for d in dirs]
     for d, r in zip(dirs, runs):
         print(f"== {os.path.basename(d)}")

@@ -12,7 +12,7 @@
         ]
       },
       {
-        "matcher": "mcp__.*create_pull_request.*|mcp__.*[Ss]lack.*",
+        "matcher": "mcp__.*create_pull_request.*",
         "hooks": [
           {
             "type": "command",

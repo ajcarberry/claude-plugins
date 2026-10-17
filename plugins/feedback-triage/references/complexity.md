@@ -4,11 +4,14 @@ Complexity decides how far an investigator goes. It is set once, at the end of
 the triage step, and stored as `complexity.tier` with a one-sentence rationale.
 Nobody re-litigates it downstream.
 
-| Tier | Investigator stops after | Report says |
-|---|---|---|
-| **high** | triage + research: what is known, what is not, why it is high | 🧠 Needs eng |
-| **medium** | + root-cause (bug) or design (feature) research, **≥ 2 options** with trade-offs and one recommendation | 🧭 Options ready |
-| **low** | + branch, implementation, tests, independent review, change request | 🔧 PR ready (🌿 Fix on branch when no PR is opened) |
+| Tier | Investigator stops after |
+|---|---|
+| **high** | triage + research: what is known, what is not, why it is high |
+| **medium** | + root cause (bug) or design (feature), **≥ 2 options**, one recommendation |
+| **low** | + branch, implementation, tests → independent review → change request |
+
+A fix PR already in flight that works (`existing_pr` verdict `fixes`) replaces
+the implement step at any tier: classify honestly, recommend reviewing it.
 
 ## Classification rules
 
@@ -45,16 +48,14 @@ flag spelling, JSON shape mirroring existing output — do not block low.
 
 **Between low and medium, choose medium.** A wrong "low" spends reviewer time on a
 PR nobody should merge; a wrong "medium" costs one engineer reading two options.
-(This is the opposite default to a stakes rubric — here "low" means *act
-autonomously*, so it must be earned.)
 
 ## Moving a tier
 
 - Research may **raise** a tier (the "one-file fix" touches the auth middleware).
   Raise it, say why in the rationale, and stop at the new tier's boundary.
 - Only the change-reviewer **lowers** autonomy: a low-tier change that fails
-  review twice becomes medium (`ft.py review --downgrade`), and the attempted diff
-  becomes one of the options.
+  review twice returns as medium (`ft.py review --downgrade`), and the attempted
+  branch becomes one of the options.
 - Never lower a tier to reach the PR step.
 
 ## Rationale format

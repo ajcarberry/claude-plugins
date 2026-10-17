@@ -1,58 +1,48 @@
 ---
 name: slack-reporting
-description: Use when writing or sending a feedback-triage report to Slack for the engineering team — summarising an investigated FT-NNNN ticket, writing headline/what/findings/recommendation prose, choosing the spiciness wording, or when ft.py lint rejects report text.
+description: Use when writing a feedback-triage report for the engineering team's Slack — summarising an investigated FT-NNNN ticket into headline/what/findings/recommendation/ask prose, applying ASD-STE100 / ELI18 style, or fixing text that ft.py lint rejected.
 ---
 
-# Slack Reporting — Same Shape Every Time, Readable in 20 Seconds
+# Slack Reporting — Five Fields, Plain Words
 
-The report replaces the engineer reading the original issues. It must carry the
-problem, the evidence, and the next action — and look identical in shape every
-time, so readers learn where to look.
+The report replaces reading the original issues. You write five prose fields;
+`ft.py render` adds every emoji, badge, pepper, link, and line break from the
+template, so every report has the same shape. Prose holds **no** emoji, bold,
+headers, or links.
 
-## Division of labour
+## Fields
 
-- **You write five prose fields.** Content only: no emoji, no bold, no links.
-- **`ft.py render` does everything else** — emoji, spiciness peppers, tier badge,
-  repro badge, raise count, source links, PR link, layout — from
-  `templates/slack/` and `theme.json`. A project overrides the look in
-  `.claude/feedback-triage/slack/` and `.claude/feedback-triage/theme.json`.
-- **The hook refuses** any Slack message naming a ticket that is not a rendered
-  outbox file, so reports can't drift from the template.
+| Field | Limit | Content |
+|---|---|---|
+| `headline` | ≤ 12 words, no end punctuation | the user-visible problem or want — not the fix, not the component |
+| `what` | ≤ 2 sentences | who hits it, when, what they see (feature: what they want to do and why) |
+| `findings` | 1–3 items, ≤ 20 words each | one verified fact each, most decisive first: repro result, root cause (`fn` in backticks), scope, an existing PR's verdict |
+| `recommendation` | ≤ 2 sentences | a command to the team (required for medium/low) |
+| `ask` | 1 sentence, optional | the one decision only a human can make |
 
-## Writing the fields
+Recommendation by outcome:
+- **Existing PR fixes it** → "Review and merge PR #N." + the one thing to check.
+- **Low, our fix** → "Review and merge the PR." (no PR opened → "the branch.") +
+  the one thing to check. The template prints the link — don't repeat it.
+- **Medium** → "Pick option A: …" + why, in one sentence.
+- **High** → where an engineer should start.
 
-Follow [slack-style.md](../../references/slack-style.md) (ASD-STE100 rules, ELI18,
-field limits, examples). The short version:
+Only facts from the investigation file. If related tickets exist, the
+recommendation must agree with theirs.
 
-- **headline** — the user-visible problem in ≤ 12 words. "Login returns 500 after
-  the SSO session expires". Not the fix, not the component name.
-- **what** — who hits it, when, what they see. ≤ 2 sentences.
-- **findings** — 1–3 verified facts, most decisive first: the repro result, the
-  root cause (file/function in backticks), the scope. Each ≤ 20 words. Only facts
-  from the investigation file; if it isn't there, it doesn't go here.
-- **recommendation** — a command to the team, shaped by tier:
-  high → where an engineer should start; medium → "Pick option A: …" + why;
-  low → "Review and merge the PR." (or "the branch." when no PR was opened) +
-  the one thing to check. The template prints the link/branch; don't repeat it.
-- **ask** — optional, one decision only a human can make.
+## Style — ASD-STE100, written for a smart 18-year-old
 
-## Spiciness in prose
+1. One idea per sentence; ≤ 20 words. Active voice, subject first.
+2. Simple present/past tense. Plain verbs: use, fail, show, add, fix, stop.
+3. One word per meaning — say "error" every time, not error/failure/crash.
+4. Instructions are commands: "Merge the PR." "Pick option B."
+5. No hedges or filler; state confidence once: "Not confirmed." "We reproduced it."
+6. Numbers as digits with units: "3 users", "2.4.1", "after 60 minutes".
+7. Internal names in `backticks`, only when an engineer needs them to act.
 
-The pepper count comes from `ft.py`; don't restate it ("this is very urgent").
-Make the prose *justify* it: a 🌶️🌶️🌶️🌶️ ticket's findings must show the data
-loss or the reach; a 🌶️ ticket reads calmly.
+Bad: "We've basically been seeing a number of reports that might possibly relate
+to SSO." Good: "Users who stay idle for 60 minutes cannot log in again."
 
-## Lint loop
-
-`ft.py report-set <ID> --json <file>` lints and stores. On exit 2, read every
-error, rewrite those fields, and retry. Warnings (passive voice, end punctuation)
-are worth fixing too — they are the difference between consistent and almost
-consistent.
-
-## Delivery
-
-`report.mode: thread` (default): post the digest, then each ticket file as a
-reply in the digest's thread, highest spice first. Send the outbox text
-**verbatim** and record each send with `ft.py sent`. Draft-only unless
-`report.auto_send` is true or the run was started with `--yes`; never post
-without one of those or the user's OK.
+`ft.py lint` enforces the countable rules and bans filler words (just, simply,
+very, really, basically, leverage, utilize, in order to, …). Fix every error and
+warning it reports.

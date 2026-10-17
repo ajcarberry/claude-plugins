@@ -31,6 +31,26 @@ retry() { # network ops: 4 tries, exponential backoff
   done
 }
 
+# never leave the queue mid-rebase (conflict markers in JSON break every ft call)
+abort_stale_rebase() {
+  local gd
+  gd=$(git -C "$DIR" rev-parse --git-dir 2>/dev/null) || return 0
+  case "$gd" in /*) ;; *) gd="$DIR/$gd" ;; esac
+  if [ -d "$gd/rebase-merge" ] || [ -d "$gd/rebase-apply" ]; then git -C "$DIR" rebase --abort 2>/dev/null || true; fi
+}
+
+# another runner saved first and our changes conflict: keep ours on a backup branch,
+# take theirs, and ask for the phase to be re-run (phases are idempotent by source ref)
+recover_conflict() {
+  git -C "$DIR" rebase --abort 2>/dev/null || true
+  local backup="$BRANCH-conflict-$(date -u +%Y%m%dT%H%M%SZ)"
+  git -C "$DIR" branch -f "$backup" HEAD
+  git -C "$DIR" reset -q --hard "$REMOTE/$BRANCH"
+  echo "state.sh: another runner saved conflicting queue changes. Took the remote queue; your run's commit is kept on branch $backup. Re-run the phase (it is idempotent); run one writer at a time per queue." >&2
+  echo "{\"persist\":\"branch\",\"pushed\":false,\"conflict\":true,\"backup\":\"$backup\"}"
+  exit 3
+}
+
 ensure_branch_worktree() {
   if [ -e "$DIR/.git" ]; then return 0; fi
   # keep the worktree out of the product branch's status
@@ -54,6 +74,7 @@ ensure_branch_worktree() {
     git -C "$DIR" rm -rf . >/dev/null 2>&1 || true
     printf '# feedback-triage state\n\nManaged by the feedback-triage plugin. Do not edit queue files by hand — use ft.py.\n' > "$DIR/README.md"
     printf '.lock\n*.tmp\nruns/\n' > "$DIR/.gitignore"
+    printf 'log.jsonl merge=union\n' > "$DIR/.gitattributes"
     git -C "$DIR" add -A && git -C "$DIR" commit -qm "feedback-triage: initialise state branch"
   fi
   if [ -d "$DIR.adopt.$$" ]; then
@@ -76,19 +97,23 @@ case "$MODE:$CMD" in
     echo '{"persist":"commit","saved":true}' ;;
   branch:pull)
     ensure_branch_worktree
+    abort_stale_rebase
     if git -C "$ROOT" ls-remote --exit-code --heads "$REMOTE" "$BRANCH" >/dev/null 2>&1; then
-      retry git -C "$DIR" pull --rebase -q "$REMOTE" "$BRANCH"
+      retry git -C "$DIR" fetch -q "$REMOTE" "$BRANCH"
+      git -C "$DIR" rebase -q --autostash "$REMOTE/$BRANCH" >/dev/null 2>&1 || recover_conflict
     fi
     echo "{\"persist\":\"branch\",\"branch\":\"$BRANCH\",\"dir\":\"$DIR\"}" ;;
   branch:save)
     ensure_branch_worktree
+    abort_stale_rebase
     git -C "$DIR" add -A
     git -C "$DIR" diff --cached --quiet || git -C "$DIR" commit -qm "$MSG"
     pushed=false
     for _ in 1 2 3; do
-      if retry git -C "$DIR" push -q -u "$REMOTE" "$BRANCH"; then pushed=true; break; fi
-      # someone else saved first: replay ours on top (ft.py writes whole files per ticket)
-      git -C "$DIR" pull --rebase -q "$REMOTE" "$BRANCH" || { git -C "$DIR" rebase --abort; break; }
+      if git -C "$DIR" push -q -u "$REMOTE" "$BRANCH" 2>/dev/null; then pushed=true; break; fi
+      # rejected (someone saved first) or network: fetch, replay ours on top, try again
+      retry git -C "$DIR" fetch -q "$REMOTE" "$BRANCH" || { sleep 2; continue; }
+      git -C "$DIR" rebase -q "$REMOTE/$BRANCH" >/dev/null 2>&1 || recover_conflict
     done
     python3 "$FT" validate >/dev/null || echo "WARNING: queue validation failed after save — run ft.py validate" >&2
     echo "{\"persist\":\"branch\",\"saved\":true,\"pushed\":$pushed}" ;;

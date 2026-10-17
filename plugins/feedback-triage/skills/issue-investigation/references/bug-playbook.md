@@ -16,12 +16,10 @@ Then look for the circumstances:
 - `git log --since=<a week before first report> -- <likely paths>` — a regression
   usually has a recent commit near it. Name the suspect commit if one fits.
 - Releases/tags around the first report date.
-- Existing issues/PRs mentioning the same error text (`gh search issues "<error>"`
+- Other issues/PRs with the same error text (`gh api "search/issues?q=repo:O/R+<error>"`
   or the GitHub MCP search). Link what you find.
 
 ## Reproduce
-
-Work in the ticket worktree (`worktree.sh create`), never the main checkout.
 
 1. **Smallest faithful repro first**: a unit or integration test that drives the
    failing path with the reporter's inputs. A test is the best repro — it becomes
@@ -47,9 +45,3 @@ Trace back from the failure to the first wrong value or decision. State it as
 
 Not reproduced but the code plainly shows the defect? Say "explained from code,
 not reproduced" — that can still support medium.
-
-## Severity → impact
-
-Use the evidence, not the reporter's tone: data loss/corruption, security
-exposure, outage, or wrong charges → impact 3; core flow fails with no
-workaround → 2; workaround exists → 1; cosmetic → 0.

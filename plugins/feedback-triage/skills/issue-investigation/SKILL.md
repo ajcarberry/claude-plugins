@@ -1,90 +1,75 @@
 ---
 name: issue-investigation
-description: Use when triaging or researching a tracked feedback ticket (FT-NNNN) — reproducing a reported bug, analysing a feature request's requirements, classifying complexity (low/medium/high), proposing fix or implementation options, or implementing a low-complexity fix on an ft/ branch.
+description: Use when triaging or researching a tracked feedback ticket (FT-NNNN) — reproducing a reported bug, analysing a feature request's requirements, checking an existing fix PR, classifying complexity (low/medium/high), proposing fix or implementation options, or implementing a low-complexity fix on an ft/ branch.
 ---
 
 # Issue Investigation — Triage, Then Go Exactly as Far as the Tier Allows
 
-One ticket, one investigator, one outcome the engineering team can act on without
-re-reading the original reports. Work in stages; complexity decides where you
-stop.
-
-```
-1 TRIAGE ─▶ classify tier ─▶ high: write up, STOP
-                            ─▶ medium: 2 RESEARCH options, STOP
-                            ─▶ low:    2 RESEARCH + 3 IMPLEMENT on a branch, STOP
-```
+One ticket, one outcome an engineer can act on without reading the original
+reports. Work in your **ticket worktree** only; the main checkout stays clean. If
+the project needs setup (deps, codegen) and none ran, do it in the worktree first
+— a missing dependency is not a "not reproduced".
 
 ## 1. Triage (every ticket)
 
-Read the ticket file and **every** source URL in it, including comments and
-thread replies — later replies often hold the repro steps or the workaround.
+1. Read the ticket and **every** source, comments included.
+2. **Fix already in flight?** For each `linked_prs` entry (and any PR the comments
+   mention): `git fetch origin pull/<N>/head:pr-<N>` and read its diff
+   (`git diff <base>...pr-<N>`; shallow clone → `git show pr-<N>`). Run the repro
+   or its tests against it. Verdict: `fixes` · `partial` · `wrong` · `unverified`
+   (could not fetch). `fixes` → never build a branch (`ft.py` refuses it); the
+   recommendation becomes "review PR #N" plus anything it misses.
+3. **Bug** → [bug-playbook.md](references/bug-playbook.md): reconstruct, reproduce,
+   root-cause. **Feature** → [feature-playbook.md](references/feature-playbook.md):
+   the job behind the request, requirements, what exists.
+4. Wrong type? A "feature" for documented behaviour that is broken is a bug; a
+   "bug" that works as designed is a feature. Correct it via `type`.
+5. Classify per [complexity.md](../../references/complexity.md) (first matching
+   rule wins) and score impact/reach per
+   [spiciness.md](../../references/spiciness.md).
+6. **Related tickets** (given in your prompt): read their investigation files if
+   they exist. Your recommendation must not contradict theirs — if the right
+   answer conflicts, say so in `concerns` and name the ticket.
+7. **`prior_attempt`** (a branch whose low-tier change failed review twice): the
+   tier is at most medium; read the branch and the review notes, and make the
+   attempt one of the options.
 
-- **Bug** → follow [bug-playbook.md](references/bug-playbook.md): reconstruct
-  the incident (version, environment, timeline, recent commits in the area), then
-  attempt a reproduction. The repro is the centre of a bug investigation.
-- **Feature** → follow [feature-playbook.md](references/feature-playbook.md):
-  find the underlying job the user is trying to do, write requirements and
-  acceptance criteria, and check what already exists.
-- **Wrong type?** A "feature request" for documented behaviour that is broken is a
-  bug; a "bug" that is working as designed is a feature request. Correct it
-  (`type` in the result) and investigate as the corrected type.
+## 2. Research (medium, low)
 
-Then classify per [complexity.md](../../references/complexity.md) — rules in
-order, first match wins, between low and medium choose medium. Score `impact` and
-`reach` per [spiciness.md](../../references/spiciness.md) from evidence.
+Bug: the root cause as one sentence — "`fn` in `file:line` does X when Y; it should
+Z". Feature: where it lives, what it touches, what it must not break. Write **≥ 2
+real options** (approach · touches · effort S/M/L · risk · leaves out) and
+recommend one in one sentence.
 
-## 2. Research (medium and low)
+## 3. Implement (low, and no PR already covers it)
 
-- **Bug:** find the root cause — the line or decision that makes it fail, not the
-  symptom. Trace from the repro to the cause. If you can't state the cause in one
-  sentence, it is not found yet.
-- **Feature:** find where it would live, what it would touch, and what it must not
-  break.
-- Write **at least two real options** (doing nothing or a workaround counts only
-  if it is a real choice), each with: approach, files/areas touched, effort (S/M/L),
-  risk, and what it does not solve. Recommend one and say why in one sentence.
+Bug: the repro becomes a failing test first; watch it fail; fix the cause; watch
+it pass; run the full suite. Feature: a test per acceptance criterion, then the
+smallest implementation. Commit on the branch naming the ticket. **Never push or
+open a PR** — the orchestrator does that after independent review. Outgrowing the
+low rules mid-way → re-classify medium and keep the attempt as an option.
 
-## 3. Implement (low only)
+Time-box: stop when the next hour would not change the tier or the
+recommendation. "Not reproduced after X, Y, Z" is a finding.
 
-- Work in the **ticket worktree** you were given (branch `ft/<ID>-<slug>`), for
-  repro and changes alike. Never edit the main checkout. The orchestrator
-  discards the worktree for medium/high tickets, so anything worth keeping (the
-  repro test, its output) goes in the investigation file.
-- Bug: the repro becomes a failing test **first**; watch it fail; fix the root
-  cause; watch it pass; run the project's full test/lint command (CLAUDE.md →
-  Makefile → package.json → language default).
-- Feature: a test per acceptance criterion, then the smallest implementation
-  that passes them.
-- Commit on the branch with a message naming the ticket. **Do not push or open a
-  PR** — the orchestrator does that after an independent review, and the hook
-  enforces it.
-- If the change outgrows the low rules (more files, a design choice, a high-list
-  area), stop: re-classify as medium, keep the attempt as an option.
+## Output
 
-## Time-box
-
-Stop digging when the next hour would not change the tier or the recommendation.
-"Not reproduced after: X, Y, Z" is a valid finding. An honest gap beats a guess.
-
-## Output — two files
-
-1. **Investigation file** at the path you were given, from the template
-   (`templates/investigation-bug.md` or `-feature.md`). Every claim cites its
-   evidence: a command and its output, a file:line, a URL.
-2. **Result JSON** at the path you were given — the orchestrator applies it with
-   `ft.py investigated`, which refuses incomplete results:
+1. **Investigation file** from `templates/investigation-<type>.md`; every claim
+   cites evidence (command + output, file:line, URL).
+2. **Result JSON** (applied by `ft.py investigated`, which refuses incomplete
+   results):
 
 ```json
 {"id": "FT-0007", "status": "DONE",
  "complexity": {"tier": "low|medium|high", "rationale": "<one sentence naming the deciding rule>"},
  "impact": 0, "reach": 0, "bump": 0, "bump_reason": null,
  "repro": "reproduced|partial|not-reproduced|not-attempted|n/a",
- "root_cause": "<one sentence, or null>", "options_count": 2,
+ "root_cause": "<one sentence or null>", "options_count": 2,
+ "existing_pr": {"url": "…", "verdict": "fixes|partial|wrong|unverified"},
  "investigation_file": "<path>", "type": "<only if corrected>",
- "branch": "<low only>", "worktree": "<low only>", "commit": "<low only>",
- "concerns": "<anything the reviewer or reader must know, or null>"}
+ "branch": "<low, built>", "worktree": "<low, built>", "commit": "<low, built>",
+ "concerns": "<or null>"}
 ```
 
-`status: "BLOCKED"` (with `concerns` saying what is missing) when you could not
-do the triage at all — no access, sources deleted, project won't build.
+Omit `existing_pr` when there is none. `status: "BLOCKED"` + `concerns` only if
+triage itself was impossible (no access, sources gone, project won't build).

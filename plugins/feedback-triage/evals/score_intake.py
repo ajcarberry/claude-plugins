@@ -22,7 +22,7 @@ def ft(project, *args):
 
 
 def score(project):
-    exp = json.load(open(os.path.join(HERE, "fixtures", "expected.json")))
+    exp = json.load(open(os.path.join(HERE, os.environ.get("SCENARIO", "fixtures"), "expected.json")))
     tickets = {t["id"]: t for t in ft(project, "list", "--format", "json")}
     paths = ft(project, "paths")
     idx = json.load(open(paths["index"]))
@@ -34,12 +34,14 @@ def score(project):
             tid = tickets[tid]["duplicate_of"]
         return tid
 
-    split = exp["split"]
+    split = exp.get("split") or "-"
     all_expected = [r for g in exp["groups"].values() for r in g["refs"]] + exp["ignored"]
     missing = [r for r in all_expected if r not in refs and r not in ignored and r != split + "~2"]
-    split_tickets = {ticket_of(split), ticket_of(split + "~2")} - {None}
-    f1_ticket = ticket_of("github:acme/tasklite#2")
-    split_ok = len(split_tickets) == 2 and f1_ticket in split_tickets
+    split_ok = None
+    if exp.get("split"):
+        split_tickets = {ticket_of(split), ticket_of(split + "~2")} - {None}
+        split_ok = len(split_tickets) == 2 and ticket_of("github:acme/tasklite#2") in split_tickets
+    ambiguous = {frozenset(p) for p in exp.get("ambiguous_pairs", [])}
     noise_ok = [r for r in exp["ignored"] if r in ignored]
     noise_tracked = [r for r in exp["ignored"] if r in refs]
 
@@ -51,6 +53,8 @@ def score(project):
                 member[r] = g
     tp = fp = fn = 0
     for a, b in itertools.combinations(sorted(member), 2):
+        if frozenset((a, b)) in ambiguous:
+            continue
         same_exp = member[a] == member[b]
         ta, tb = ticket_of(a), ticket_of(b)
         same_act = ta is not None and ta == tb
@@ -67,7 +71,7 @@ def score(project):
         groups[g] = tid
         if tid and (spec["type"] == "any" or tickets[tid]["type"] == spec["type"]):
             type_hits += 1
-    b1 = tickets.get(groups.get("B1-export-drops-last") or "", {})
+    b1 = tickets.get(groups.get(next(iter(exp["groups"]))) or "", {})
     reporters = 0
     if b1:
         names = set()

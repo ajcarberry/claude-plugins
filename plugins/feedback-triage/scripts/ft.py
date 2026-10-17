@@ -33,16 +33,18 @@ TRANSITIONS = {
     "investigating": {"investigated", "blocked", "new", "needs-reinvestigation"},
     "investigated": {"reported", "needs-reinvestigation", "resolved", "duplicate", "invalid"},
     "needs-reinvestigation": {"investigating", "resolved", "duplicate", "invalid"},
-    "blocked": {"investigating", "new", "resolved", "duplicate", "invalid"},
+    "blocked": {"investigating", "new", "needs-reinvestigation", "resolved", "duplicate", "invalid"},
     "reported": {"reported", "needs-reinvestigation", "resolved", "duplicate", "invalid"},
     "resolved": {"needs-reinvestigation"},
     "duplicate": set(),
-    "invalid": set(),
+    "invalid": {"needs-reinvestigation"},
 }
 REPRO = ("reproduced", "not-reproduced", "partial", "not-attempted", "n/a")
 RELATIONS = ("original", "duplicate", "mention")
 REPORTABLE = ("investigated", "reported")
 CLAIM_TTL_HOURS = 6
+
+PR_VERDICTS = ("fixes", "partial", "wrong", "unverified")
 
 DEFAULT_CONFIG = {
     "state": {"dir": ".feedback-triage", "persist": "branch",
@@ -50,8 +52,8 @@ DEFAULT_CONFIG = {
     "sources": {"github": [], "slack": []},
     "intake": {"lookback_days": 14, "overlap_hours": 24},
     "investigate": {"max_parallel": 4, "max_per_run": 8, "base_branch": "main",
-                    "branch_prefix": "ft/", "open_prs": True, "draft_prs": True},
-    "report": {"channel": "", "mode": "thread", "auto_send": False, "min_level": 1},
+                    "branch_prefix": "ft/", "open_prs": True, "draft_prs": True, "setup": ""},
+    "report": {"channel": "", "min_level": 1},
     "recheck": {"max_per_run": 20, "min_age_hours": 12},
 }
 
@@ -162,10 +164,10 @@ def emit(obj):
 
 # ------------------------------------------------------------ ref handling
 
-GH_URL = re.compile(r"https?://github\.com/([\w.-]+)/([\w.-]+)/(?:issues|pull|discussions)/(\d+)", re.I)
-GH_SHORT = re.compile(r"^([\w.-]+)/([\w.-]+)#(\d+)$")
+GH_URL = re.compile(r"https?://(?:www\.)?github\.com/([\w.-]+)/([\w.-]+)/(?:issues|pull|discussions)/(\d+)", re.I)
+GH_SHORT = re.compile(r"^([\w.-]+)/([\w.-]+)#(\d+(?:~\d+)?)$")
 SLACK_URL = re.compile(r"https?://[\w.-]+\.slack\.com/archives/([A-Z0-9]+)/p(\d{10})(\d{6})", re.I)
-SLACK_REF = re.compile(r"^slack:([A-Z0-9]+)/(\d{10}\.\d{6})$", re.I)
+SLACK_REF = re.compile(r"^slack:([A-Z0-9]+)/(\d{10}\.\d{6}(?:~\d+)?)$", re.I)
 
 
 def normalize_ref(value):
@@ -299,7 +301,7 @@ def validate_source(s, errs, where="source"):
         return
     _need(normalize_ref(s.get("ref")) == s.get("ref"), f"{where}: ref not canonical: {s.get('ref')}", errs)
     _need(s.get("relation") in RELATIONS, f"{where}: relation must be one of {RELATIONS}", errs)
-    _need(bool(s.get("url")), f"{where}: url required", errs)
+    _need(bool(s.get("url")) or s.get("ref", "").startswith("slack:"), f"{where}: url required", errs)
     _need(len(s.get("excerpt") or "") <= 400, f"{where}: excerpt > 400 chars", errs)
 
 
@@ -361,6 +363,8 @@ def momentum(t):
 def readiness(t):
     inv = t.get("investigation") or {}
     tier = (t.get("complexity") or {}).get("tier")
+    if (inv.get("existing_pr") or {}).get("verdict") == "fixes":
+        return 1
     return 1 if tier == "low" and inv.get("review") == "approved" else 0
 
 
@@ -406,7 +410,9 @@ BANNED = {
     "a number of": "some", "etc": None,
 }
 HEDGES = ("might possibly", "could potentially", "it seems like", "sort of", "kind of")
-PASSIVE = re.compile(r"\b(?:is|are|was|were|be|been|being)\s+(?:\w+ly\s+)?\w+(?:ed|en)\b", re.I)
+PASSIVE = re.compile(r"\b(?:is|are|was|were|be|been|being)\s+(?:\w+ly\s+)?(?:\w+ed|broken|written|taken|"
+                     r"given|shown|seen|known|chosen|hidden|driven|frozen|forgotten|done|made|sent|"
+                     r"built|found|kept|left|lost|held|told|caught|paid)\b", re.I)
 EMOJI = re.compile("[\U0001F300-\U0001FAFF☀-➿⬀-⯿]|:[a-z0-9_+-]+:")
 MARKUP = re.compile(r"\*\*|__|^#|<[^>]+\|[^>]+>|\[[^\]]+\]\([^)]+\)", re.M)
 
@@ -421,6 +427,7 @@ LIMITS = {  # field: (max words per sentence, max sentences, max total words)
 
 def sentences(text):
     text = re.sub(r"`[^`]*`", "CODE", text)  # code spans count as one word
+    text = re.sub(r"\b(e\.g|i\.e|etc|vs)\.", r"\1", text, flags=re.I)
     parts = re.split(r"(?<=[.!?])\s+", text.strip())
     return [p for p in parts if p.strip()]
 
@@ -529,7 +536,7 @@ def fill(template, values):
         list_keys = [k for k, is_list in keys if is_list]
         if list_keys:
             for item in values.get(list_keys[0]) or []:
-                out.append(re.sub(r"\{\{\w+\[\]\}\}", item, fill_scalars(line, values)))
+                out.append(re.sub(r"\{\{\w+\[\]\}\}", lambda _m, v=item: v, fill_scalars(line, values)))
             continue
         if all(not values.get(k) for k, _ in keys):
             continue
@@ -542,13 +549,14 @@ def fill_scalars(line, values):
 
 
 def slack_link(url, label):
-    return f"<{url}|{label}>"
+    """Paste-ready: Slack's composer auto-links bare URLs; <url|label> only works via the API."""
+    return f"{label} {url}"
 
 
 def source_label(s, theme):
     ref = s["ref"]
     if ref.startswith("github:"):
-        return f"{theme['source']['github']} {ref.split('/', 1)[1]}"
+        return f"{theme['source']['github']} {ref.split(':', 1)[1]}"
     if ref.startswith("slack:"):
         ch = s.get("channel_name") or ref.split(":")[1].split("/")[0]
         return f"{theme['source']['slack']} #{ch.lstrip('#')}"
@@ -560,18 +568,23 @@ def ticket_values(t, theme):
     tier = t["complexity"]["tier"]
     inv = t.get("investigation") or {}
     rep = t["report"]
-    links = [slack_link(s["url"], source_label(s, theme)) for s in t["sources"][:4]]
+    links = [slack_link(s["url"], source_label(s, theme)) if s.get("url") else source_label(s, theme)
+             for s in t["sources"][:4]]
     if len(t["sources"]) > 4:
         links.append(f"+{len(t['sources']) - 4} more")
     effective_tier = tier
     branch = ""
-    if tier == "low" and not inv.get("pr_url"):
+    ext = inv.get("existing_pr") or {}
+    if ext.get("verdict") in ("fixes", "partial", "unverified"):
+        effective_tier = "existing_pr"  # someone already has a fix in flight
+    elif tier == "low" and not inv.get("pr_url"):
         if inv.get("review") == "approved" and inv.get("branch"):
             effective_tier = "low_branch"  # reviewed fix exists, no change request opened
             branch = f"{theme['tier']['low_branch']['emoji']} `{inv['branch']}`"
         else:
             effective_tier = "medium"
-    pr = slack_link(inv["pr_url"], f"{theme['pr']} {theme['labels']['pr']}") if inv.get("pr_url") else ""
+    pr_url = inv.get("pr_url") or (ext.get("url") if effective_tier == "existing_pr" else "")
+    pr = slack_link(pr_url, f"{theme['pr']} {theme['labels']['pr']}") if pr_url else ""
     repro = ""
     if t["type"] == "bug" and inv.get("repro") in theme.get("repro", {}):
         repro = theme["repro"][inv["repro"]]
@@ -608,6 +621,7 @@ def report_hash(t):
     rep = {k: v for k, v in (t.get("report") or {}).items() if not k.startswith("_")}
     basis = {"report": rep, "level": sp.get("level"),
              "tier": (t.get("complexity") or {}).get("tier"), "pr": inv.get("pr_url"),
+             "existing_pr": (inv.get("existing_pr") or {}).get("verdict"),
              "status": "closed" if t["status"] in CLOSED_STATUSES else "open"}
     return hashlib.sha256(json.dumps(basis, sort_keys=True).encode()).hexdigest()[:16]
 
@@ -657,7 +671,7 @@ def build_source(raw, relation):
         "relation": relation,
         "added_at": iso(),
     }
-    for k in ("channel_name", "plus_ones", "state"):
+    for k in ("channel_name", "plus_ones", "state", "linked_prs"):
         if raw.get(k):
             src[k] = raw[k]
     errs = []
@@ -667,20 +681,65 @@ def build_source(raw, relation):
     return src
 
 
-def attach_source(st, idx, tid, raw, relation, actor, note=None):
+def resolve_target(st, tid):
+    """Follow duplicate_of to the surviving ticket."""
+    seen = set()
     t = st.get(tid)
-    if t["status"] == "duplicate":
-        tid = t["duplicate_of"]
-        t = st.get(tid)
+    while t["status"] == "duplicate" and t.get("duplicate_of") and t["id"] not in seen:
+        seen.add(t["id"])
+        t = st.get(t["duplicate_of"])
+    return t
+
+
+def attach_source(st, idx, tid, raw, relation, actor, note=None):
+    t = resolve_target(st, tid)
+    tid = t["id"]
     src = build_source(raw, relation)
     if src["ref"] in idx["refs"]:
         return idx["refs"][src["ref"]], False
     t["sources"].append(src)
     idx["refs"][src["ref"]] = tid
     history(t, "source-added", actor, ref=src["ref"], relation=relation, **({"note": note} if note else {}))
+    if t["status"] in ("resolved", "invalid", "blocked"):
+        transition(t, "needs-reinvestigation", actor, f"new report {src['ref']} after {t['status']}")
     compute_spice(t)
     st.put(t)
     return tid, True
+
+
+def resolve_dup_target(idx, value):
+    """duplicate_of may be a ticket id or the original's source URL/ref — never a predicted id."""
+    if re.match(r"^(?:FT-)?\d+$", str(value).strip(), re.I):
+        return canonical_id(value)
+    ref = normalize_ref(value)
+    if not ref or ref not in idx["refs"]:
+        raise BadInput(f"duplicate_of {value!r} is not a tracked ticket or source — upsert the original first")
+    return idx["refs"][ref]
+
+
+def refresh_existing(st, idx, ref, src_raw):
+    """Re-reading a tracked source merges new +1s and state, so momentum stays live."""
+    t = resolve_target(st, idx["refs"][ref])
+    for s_ in t["sources"]:
+        if s_["ref"] != ref:
+            continue
+        changed = False
+        new_po = sorted(set(s_.get("plus_ones") or []) | set(src_raw.get("plus_ones") or []))
+        if new_po != sorted(s_.get("plus_ones") or []):
+            s_["plus_ones"] = new_po
+            changed = True
+        for k in ("state", "linked_prs"):
+            if src_raw.get(k) and src_raw[k] != s_.get(k):
+                s_[k] = src_raw[k]
+                changed = True
+        if changed and t["status"] == "resolved" and (src_raw.get("state") or "").lower() == "open":
+            transition(t, "needs-reinvestigation", "intake", f"{ref} reopened upstream")
+        if changed:
+            history(t, "source-refreshed", "intake", ref=ref)
+            compute_spice(t)
+            st.put(t)
+        return t["id"], changed
+    return t["id"], False
 
 
 def cmd_upsert(args, st):
@@ -696,31 +755,40 @@ def cmd_upsert(args, st):
     with st.lock():
         idx = st.index()
         if ref in idx["refs"]:
-            emit({"action": "exists", "id": idx["refs"][ref], "ref": ref})
+            tid, changed = (idx["refs"][ref], False) if dry else refresh_existing(st, idx, ref, src_raw)
+            emit({"action": "exists", "id": tid, "ref": ref, "refreshed": changed})
             return
         if ref in idx["ignored"]:
-            emit({"action": "ignored", "ref": ref, "reason": idx["ignored"][ref]["reason"]})
-            return
-        # deterministic cross-link: candidate text links to an already-tracked source
-        linked = [r for r in [normalize_ref(x) for x in cand.get("links") or []]
-                  + extract_refs(src_raw.get("excerpt") or "") if r and r in idx["refs"]]
+            reopened = (src_raw.get("state") or "").lower() == "open" and \
+                re.match(r"^(?:\w+:\s*)?closed", idx["ignored"][ref]["reason"].lower())
+            if not reopened:
+                emit({"action": "ignored", "ref": ref, "reason": idx["ignored"][ref]["reason"]})
+                return
+            if not dry:
+                idx["ignored"].pop(ref)  # reopened upstream: it is feedback again
+        # cross-links are evidence, not a verdict: the orchestrator decides
+        linked = [r for r in dict.fromkeys([normalize_ref(x) for x in cand.get("links") or []]
+                  + extract_refs(src_raw.get("excerpt") or "")) if r and r in idx["refs"] and r != ref]
         dup = cand.get("duplicate_of")
         if dup:
-            target, how, relation = canonical_id(dup), "duplicate_of", "duplicate"
-        elif linked:
-            target, how, relation = idx["refs"][linked[0]], f"link:{linked[0]}", "mention"
-        else:
-            target = None
-        if target:
+            target = resolve_dup_target(idx, dup)
             if dry:
-                emit({"action": "would-link", "id": target, "via": how, "ref": ref})
+                emit({"action": "would-link", "id": resolve_target(st, target)["id"], "ref": ref})
                 return
-            tid, _ = attach_source(st, idx, target, src_raw, relation, actor,
+            tid, _ = attach_source(st, idx, target, src_raw, "duplicate", actor,
                                    note=cand.get("duplicate_reason"))
             st.save_index(idx)
-            st.log("linked", id=tid, ref=ref, via=how)
-            emit({"action": "linked", "id": tid, "via": how, "ref": ref})
+            st.log("linked", id=tid, ref=ref)
+            emit({"action": "linked", "id": tid, "ref": ref})
             return
+        if linked and not cand.get("distinct"):
+            ids = sorted({resolve_target(st, idx["refs"][r])["id"] for r in linked})
+            if dry:
+                emit({"action": "links-tracked", "ids": ids, "ref": ref,
+                      "next": "same issue → duplicate_of; different issue → distinct: true"})
+                return
+            raise Blocked(f"{ref} links tracked {', '.join(ids)} — set duplicate_of (same issue) "
+                          "or distinct: true (different issue)")
         if cand.get("type") not in TYPES:
             raise BadInput(f"candidate.type must be one of {TYPES}")
         tid = f"FT-{idx['next_id']:04d}"
@@ -766,6 +834,38 @@ def cmd_link(args, st):
     emit({"action": "linked" if added else "exists", "id": got})
 
 
+def cmd_move_source(args, st):
+    """move-source REF --to ID --reason T: re-home a source that was linked to the wrong ticket."""
+    st.require()
+    ref = normalize_ref(args[0] if args else None)
+    to_id, reason = opt(args, "--to"), opt(args, "--reason")
+    if not ref or not to_id or not reason:
+        raise BadInput("move-source REF --to ID --reason TEXT")
+    with st.lock():
+        idx = st.index()
+        if ref not in idx["refs"]:
+            raise BadInput(f"{ref} is not tracked")
+        src_t = resolve_target(st, idx["refs"][ref])
+        dst_t = resolve_target(st, to_id)
+        if src_t["id"] == dst_t["id"]:
+            raise BadInput(f"{ref} is already on {dst_t['id']}")
+        moving = next(x for x in src_t["sources"] if x["ref"] == ref)
+        if moving["relation"] == "original":
+            raise Blocked(f"{ref} is {src_t['id']}'s original report — merge the tickets instead")
+        src_t["sources"] = [x for x in src_t["sources"] if x["ref"] != ref]
+        dst_t["sources"].append(dict(moving, relation="duplicate"))
+        idx["refs"][ref] = dst_t["id"]
+        if dst_t["status"] in ("resolved", "invalid", "blocked"):
+            transition(dst_t, "needs-reinvestigation", "intake", f"moved-in report {ref}")
+        for t, ev in ((src_t, "source-removed"), (dst_t, "source-added")):
+            history(t, ev, "intake", ref=ref, reason=reason)
+            compute_spice(t)
+            st.put(t)
+        st.save_index(idx)
+        st.log("moved", ref=ref, frm=src_t["id"], to=dst_t["id"])
+    emit({"action": "moved", "ref": ref, "from": src_t["id"], "to": dst_t["id"]})
+
+
 def cmd_ignore(args, st):
     st.require()
     ref = normalize_ref(opt(args, "--ref"))
@@ -794,6 +894,8 @@ def cmd_merge(args, st):
     with st.lock():
         idx = st.index()
         dup, into = st.get(dup_id), st.get(into_id)
+        if dup["status"] in ("duplicate", "invalid"):
+            raise Blocked(f"{dup_id} is already {dup['status']} — nothing to merge")
         if into["status"] in CLOSED_STATUSES:
             raise Blocked(f"{into_id} is {into['status']} — merge into an open ticket")
         for s in dup["sources"]:
@@ -804,6 +906,10 @@ def cmd_merge(args, st):
         compute_spice(into)
         transition(dup, "duplicate", "merge", reason)
         dup["duplicate_of"] = into_id
+        for other in st.all():
+            if other.get("duplicate_of") == dup_id:
+                other["duplicate_of"] = into_id
+                st.put(other)
         st.put(into)
         st.put(dup)
         st.save_index(idx)
@@ -829,12 +935,12 @@ def cmd_search(args, st):
     for t in st.all():
         if t["status"] in CLOSED_STATUSES and not include_closed:
             continue
-        doc = tokens(t["title"] + " " + t["summary"] + " " + t.get("component", "") + " "
-                     + " ".join(s.get("excerpt", "") for s in t["sources"]))
+        orig = next((s.get("excerpt", "") for s in t["sources"] if s["relation"] == "original"), "")
+        doc = tokens(" ".join((t["title"], t["summary"], t.get("component", ""), orig)))
         if not q or not doc:
             continue
-        score = len(q & doc) / len(q | doc)
-        if score >= 0.08:
+        score = len(q & doc) / len(q)  # share of the query this ticket covers
+        if score >= 0.25:
             hits.append({"id": t["id"], "score": round(score, 3), "type": t["type"],
                          "status": t["status"], "title": t["title"]})
     hits.sort(key=lambda h: -h["score"])
@@ -857,6 +963,9 @@ def cmd_list(args, st):
         emit(rows)
     elif fmt == "ids":
         print("\n".join(t["id"] for t in rows))
+    elif fmt == "brief":
+        for t in rows:
+            print(f"{t['id']} {t['type'][0]} {t['title']}")
     else:
         for t in rows:
             sp = (t.get("spiciness") or {}).get("level", "-")
@@ -900,6 +1009,38 @@ def cmd_watermark(args, st):
             raise BadInput("watermark get|set SOURCE [VALUE]")
 
 
+def related(st, t, limit=3):
+    """Open tickets about the same thing — investigators keep recommendations consistent.
+    Words shared by more than a quarter of open tickets ("error", "fails") don't count."""
+    open_t = [o for o in st.all() if o["status"] not in CLOSED_STATUSES]
+    docs = {o["id"]: tokens(" ".join((o["title"], o["summary"], o.get("component", "")))) for o in open_t}
+    df = {}
+    for d in docs.values():
+        for w in d:
+            df[w] = df.get(w, 0) + 1
+    common = {w for w, n in df.items() if n > max(2, len(docs) // 4)}
+    q = tokens(t["title"] + " " + t.get("component", "")) - common
+    out = []
+    for oid, d in docs.items():
+        if oid == t["id"] or not q:
+            continue
+        shared = q & (d - common)
+        if len(shared) >= 2 or (len(shared) == 1 and len(q) <= 2):
+            out.append((len(shared) / len(q), oid))
+    return [i for _, i in sorted(out, reverse=True)[:limit]]
+
+
+def cmd_related(args, st):
+    """related ID: open tickets on the same topic (as stored at claim, else computed)."""
+    st.require()
+    t = st.get(args[0])
+    rel = t["investigation"].get("related")
+    if rel is None:
+        rel = related(st, t)
+    emit([{"id": r, "title": st.get(r)["title"],
+           "recommendation": (st.get(r).get("report") or {}).get("recommendation")} for r in rel])
+
+
 def cmd_claim(args, st):
     """Atomically take tickets for investigation (new / needs-reinvestigation / expired claims)."""
     st.require()
@@ -918,13 +1059,14 @@ def cmd_claim(args, st):
                 pool.append(t)
         pool.sort(key=lambda t: (t["status"] != "needs-reinvestigation", -reporters(t), t["created_at"]))
         for t in pool[:limit]:
+            rel = related(st, t)
+            t["investigation"]["related"] = rel
             if t["status"] != "investigating":
                 transition(t, "investigating", actor)
             t["investigation"]["claimed_at"] = iso()
-            t["investigation"]["attempts"] = int(t["investigation"].get("attempts") or 0) + 1
             st.put(t)
             claimed.append({"id": t["id"], "type": t["type"], "title": t["title"],
-                            "attempt": t["investigation"]["attempts"]})
+                            "failures": int(t["investigation"].get("attempts") or 0), "related": rel})
     emit({"claimed": claimed, "remaining": max(0, len(pool) - len(claimed))})
 
 
@@ -934,7 +1076,8 @@ def cmd_release(args, st):
     reason = opt(args, "--reason") or "released"
     with st.lock():
         t = st.get(tid)
-        attempts = int(t["investigation"].get("attempts") or 0)
+        attempts = int(t["investigation"].get("attempts") or 0) + 1  # failures only
+        t["investigation"]["attempts"] = attempts
         target = "blocked" if attempts >= 2 or "--blocked" in args else "new"
         transition(t, target, "investigate", reason)
         t["investigation"].pop("claimed_at", None)
@@ -945,7 +1088,7 @@ def cmd_release(args, st):
 
 INVESTIGATION_KEYS = {"id", "status", "type", "complexity", "impact", "reach", "repro",
                       "investigation_file", "branch", "worktree", "commit", "summary_correction",
-                      "bump", "bump_reason", "concerns", "options_count", "root_cause"}
+                      "bump", "bump_reason", "concerns", "options_count", "root_cause", "existing_pr"}
 
 
 def cmd_investigated(args, st):
@@ -975,8 +1118,17 @@ def cmd_investigated(args, st):
             raise BadInput(f"investigation_file missing or not found: {f}")
         if t["type"] == "bug" and res.get("repro") not in REPRO:
             raise BadInput(f"bugs need repro: one of {REPRO}")
-        if c["tier"] == "low" and not res.get("branch"):
-            raise BadInput("low tier needs the branch holding the change")
+        ext = res.get("existing_pr")
+        if ext and (not isinstance(ext, dict) or ext.get("verdict") not in PR_VERDICTS or not ext.get("url")):
+            raise BadInput(f"existing_pr needs url and verdict (one of {PR_VERDICTS})")
+        defer = bool(ext) and ext["verdict"] in ("fixes", "partial", "unverified")
+        if ext and ext["verdict"] == "fixes" and res.get("branch"):
+            raise BadInput(f"{ext['url']} already fixes this — review it instead of building a duplicate branch")
+        prior = t["investigation"].get("prior_attempt")
+        if prior and c["tier"] == "low":
+            raise BadInput(f"a low-tier attempt ({prior}) failed review twice — classify medium and keep it as an option")
+        if c["tier"] == "low" and not res.get("branch") and not defer:
+            raise BadInput("low tier needs the branch holding the change (or an existing_pr that covers it)")
         if c["tier"] == "medium" and int(res.get("options_count") or 0) < 2:
             raise BadInput("medium tier needs ≥ 2 implementation options in the investigation file")
         t["complexity"] = {"tier": c["tier"], "rationale": c["rationale"]}
@@ -986,7 +1138,8 @@ def cmd_investigated(args, st):
                     "root_cause": res.get("root_cause") or inv.get("root_cause"),
                     "concerns": res.get("concerns") or None})
         inv.pop("claimed_at", None)
-        if c["tier"] == "low":
+        inv["existing_pr"] = ext or None
+        if c["tier"] == "low" and res.get("branch"):
             inv.update({"branch": res["branch"], "worktree": res.get("worktree"),
                         "commit": res.get("commit"), "review": "pending"})
         if res.get("summary_correction"):
@@ -999,7 +1152,7 @@ def cmd_investigated(args, st):
         st.put(t)
         st.log("investigated", id=tid, tier=c["tier"])
     emit({"id": tid, "tier": c["tier"], "spice": t["spiciness"]["level"],
-          "next": "review" if c["tier"] == "low" else "report"})
+          "next": "review" if inv.get("review") == "pending" else "report"})
 
 
 def cmd_review(args, st):
@@ -1019,10 +1172,10 @@ def cmd_review(args, st):
         inv["review_notes"] = notes
         history(t, "review", "reviewer", verdict=verdict)
         if verdict == "changes" and "--downgrade" in args:
-            t["complexity"] = {"tier": "medium",
-                               "rationale": t["complexity"]["rationale"] + f" Downgraded: review found: {notes}"}
             inv["review"] = "rejected"
-            history(t, "tier-downgraded", "reviewer", to="medium")
+            inv["prior_attempt"] = inv.get("branch")
+            history(t, "tier-downgraded", "reviewer", to="medium", notes=notes)
+            transition(t, "needs-reinvestigation", "reviewer", f"low attempt rejected twice: {notes}")
         compute_spice(t)
         st.put(t)
     emit({"id": tid, "review": t["investigation"]["review"], "tier": t["complexity"]["tier"]})
@@ -1098,7 +1251,7 @@ def due_reports(st):
         if (t["spiciness"] or {}).get("level", 0) < min_level:
             continue
         inv = t.get("investigation") or {}
-        if t["complexity"]["tier"] == "low" and inv.get("review") in ("pending", "changes"):
+        if inv.get("review") in ("pending", "changes"):
             continue  # wait for the reviewer verdict / the revision
         if (t.get("reported") or {}).get("hash") == report_hash(t):
             continue
@@ -1113,19 +1266,25 @@ def cmd_due(args, st):
     if kind == "report":
         emit([{"id": t["id"], "level": t["spiciness"]["level"], "title": t["title"]} for t in due_reports(st)])
     elif kind == "report-writing":
+        min_level = int(st.cfg["report"].get("min_level") or 1)
         emit([t["id"] for t in st.all() if t["status"] in REPORTABLE and
+              (t.get("spiciness") or {}).get("level", 0) >= min_level and
               (not t.get("report") or t["report"].get("_stale"))
-              and not (t["complexity"]["tier"] == "low" and t["investigation"].get("review") in ("pending", "changes"))])
+              and t["investigation"].get("review") not in ("pending", "changes")])
+    elif kind == "review":
+        emit([t["id"] for t in st.all() if t["status"] == "investigated"
+              and t["investigation"].get("review") in ("pending", "changes")])
     elif kind == "recheck":
         hours = float(opt(args, "--min-age-hours") or st.cfg["recheck"]["min_age_hours"])
         limit = int(opt(args, "--limit") or st.cfg["recheck"]["max_per_run"])
         cutoff = now() - timedelta(hours=hours)
         pool = [t for t in st.all() if t["status"] not in ("duplicate", "invalid", "investigating")
+                and not (t["status"] == "resolved" and int((t.get("verification") or {}).get("quiet_resolved") or 0) >= 2)
                 and (parse_iso((t.get("verification") or {}).get("last_checked_at")) or datetime.min.replace(tzinfo=timezone.utc)) < cutoff]
         pool.sort(key=lambda t: ((t.get("verification") or {}).get("last_checked_at") or "", t["id"]))
         emit([{"id": t["id"], "status": t["status"], "title": t["title"]} for t in pool[:limit]])
     else:
-        raise BadInput("due report|report-writing|recheck")
+        raise BadInput("due report|report-writing|review|recheck")
 
 
 def cmd_render(args, st):
@@ -1133,11 +1292,12 @@ def cmd_render(args, st):
     ids = [canonical_id(x) for x in (opt(args, "--ids") or "").split(",") if x]
     tickets = [st.get(i) for i in ids] if ids else due_reports(st)
     theme = load_theme(st.root)
-    closed = []
+    closed, closed_ids = [], []
     for t in st.all():
         rep = t.get("reported") or {}
         if t["status"] == "resolved" and rep.get("at") and not rep.get("closed_announced"):
             closed.append(f"{theme['closed']} {t['id']} · {t['title']}")
+            closed_ids.append(t["id"])
     if not tickets and not closed:
         emit({"run": None, "files": [], "note": "nothing due"})
         return
@@ -1155,14 +1315,13 @@ def cmd_render(args, st):
     digest = fill(load_template(st.root, "digest.txt"), {
         "digest_emoji": theme["digest"], "date": now().strftime("%Y-%m-%d"),
         "count": str(len(tickets)), "noun": "report" if len(tickets) == 1 else "reports",
-        "lines": lines, "closed": closed, "thread": theme["thread"],
-        "thread_line": f"{theme['thread']} {theme['labels']['thread']}",
+        "lines": lines, "closed": closed,
     })
     path = os.path.join(outdir, "00-digest.txt")
     with open(path, "w") as f:
         f.write(digest)
     files.append({"file": os.path.relpath(path, st.root), "kind": "digest",
-                  "ids": [t["id"] for t in tickets], "closed": [c.split(" ")[1] for c in closed]})
+                  "ids": [t["id"] for t in tickets], "closed": closed_ids})
     for n, t in enumerate(tickets, 1):
         text = fill(tpl, ticket_values(t, theme))
         path = os.path.join(outdir, f"{n:02d}-{t['id']}.txt")
@@ -1170,47 +1329,60 @@ def cmd_render(args, st):
             f.write(text)
         files.append({"file": os.path.relpath(path, st.root), "kind": "ticket", "id": t["id"],
                       "hash": report_hash(t)})
-    write_json(os.path.join(outdir, "manifest.json"), {"run": run, "mode": st.cfg["report"]["mode"],
-                                                       "channel": st.cfg["report"]["channel"], "files": files})
-    emit({"run": run, "dir": os.path.relpath(outdir, st.root), "mode": st.cfg["report"]["mode"],
-          "channel": st.cfg["report"]["channel"], "files": files})
+    # one paste-ready file: the digest, then each ticket message (posted as thread replies)
+    texts = [open(os.path.join(st.root, f["file"])).read().strip() for f in files]
+    with open(os.path.join(outdir, "paste.txt"), "w") as fh:
+        fh.write(f"\n\n{theme['labels']['reply']}\n\n".join(texts) + "\n")
+    write_json(os.path.join(outdir, "manifest.json"), {"run": run, "channel": st.cfg["report"]["channel"],
+                                                       "files": files})
+    # older unposted runs are superseded: the queue re-renders anything still due
+    for old in os.listdir(os.path.join(st.dir, "reports", "outbox")):
+        if old != run:
+            os.makedirs(os.path.join(st.dir, "reports", "superseded"), exist_ok=True)
+            os.replace(os.path.join(st.dir, "reports", "outbox", old),
+                       os.path.join(st.dir, "reports", "superseded", old))
+    emit({"run": run, "dir": os.path.relpath(outdir, st.root), "channel": st.cfg["report"]["channel"],
+          "paste": os.path.relpath(os.path.join(outdir, "paste.txt"), st.root), "files": files})
 
 
 def cmd_sent(args, st):
-    """sent RUN --file F [--permalink URL] [--ts TS]: record one delivered outbox message."""
+    """sent RUN [--file F | --all] [--permalink URL]: record posted outbox messages."""
     st.require()
-    run = args[0]
-    rel = opt(args, "--file")
+    run = args[0] if args else ""
     outdir = os.path.join(st.dir, "reports", "outbox", run)
     manifest = read_json(os.path.join(outdir, "manifest.json"))
     if not manifest:
         raise BadInput(f"no outbox run {run}")
-    entry = next((f for f in manifest["files"] if f["file"] == rel or os.path.basename(f["file"]) == rel), None)
-    if not entry:
-        raise BadInput(f"{rel} not in run {run}")
+    rel = opt(args, "--file")
+    entries = manifest["files"] if "--all" in args else \
+        [f for f in manifest["files"] if rel and (f["file"] == rel or os.path.basename(f["file"]) == rel)]
+    if not entries:
+        raise BadInput(f"{rel} not in run {run} (or pass --all)")
     with st.lock():
-        if entry["kind"] == "ticket":
-            t = st.get(entry["id"])
-            transition(t, "reported", "report")
-            t["reported"] = {"at": iso(), "hash": entry["hash"], "permalink": opt(args, "--permalink"),
-                             "ts": opt(args, "--ts"), "count": int((t.get("reported") or {}).get("count") or 0) + 1}
-            st.put(t)
-        else:
-            for cid in entry.get("closed") or []:
-                t = st.get(cid)
-                t["reported"]["closed_announced"] = iso()
+        for entry in entries:
+            if entry.get("sent_at"):
+                continue
+            if entry["kind"] == "ticket":
+                t = st.get(entry["id"])
+                if t["status"] in REPORTABLE:  # changed since render: record it, keep its status
+                    transition(t, "reported", "report")
+                t["reported"] = {"at": iso(), "hash": entry["hash"], "permalink": opt(args, "--permalink"),
+                                 "count": int((t.get("reported") or {}).get("count") or 0) + 1}
                 st.put(t)
-        entry["sent_at"] = iso()
-        entry["permalink"] = opt(args, "--permalink")
-        write_json(os.path.join(outdir, "manifest.json"), manifest)
+            else:
+                for cid in entry.get("closed") or []:
+                    t = st.get(cid)
+                    t["reported"]["closed_announced"] = iso()
+                    st.put(t)
+            entry["sent_at"] = iso()
+            write_json(os.path.join(outdir, "manifest.json"), manifest)
         if all(f.get("sent_at") for f in manifest["files"]):
-            dest = os.path.join(st.dir, "reports", "sent", run)
-            os.replace(outdir, dest)
-        st.log("sent", run=run, file=rel)
-    emit({"run": run, "file": rel, "recorded": True})
+            os.replace(outdir, os.path.join(st.dir, "reports", "sent", run))
+        st.log("sent", run=run, count=len(entries))
+    emit({"run": run, "recorded": [e.get("id") or "digest" for e in entries]})
 
 
-RECHECK_PATCH_KEYS = {"title", "summary", "severity", "environment", "labels", "component"}
+RECHECK_PATCH_KEYS = {"title", "summary", "type", "severity", "environment", "labels", "component", "plus_ones"}
 VERDICTS = ("confirmed", "corrected", "resolved", "needs-reinvestigation", "invalid")
 
 
@@ -1235,6 +1407,15 @@ def cmd_recheck_apply(args, st):
         if t["status"] in ("duplicate", "invalid"):
             raise Blocked(f"{tid} is {t['status']} — not rechecked")
         changed = {}
+        if "type" in patch and patch["type"] not in TYPES:
+            raise BadInput("type must be bug or feature")
+        for ref_, names in (patch.pop("plus_ones", None) or {}).items():
+            for s_ in t["sources"]:
+                if s_["ref"] == normalize_ref(ref_):
+                    merged = sorted(set(s_.get("plus_ones") or []) | set(names))
+                    if merged != sorted(s_.get("plus_ones") or []):
+                        changed[f"plus_ones:{s_['ref']}"] = {"from": s_.get("plus_ones"), "to": merged}
+                        s_["plus_ones"] = merged
         for k, v in patch.items():
             if t.get(k) != v:
                 changed[k] = {"from": t.get(k), "to": v}
@@ -1244,7 +1425,9 @@ def cmd_recheck_apply(args, st):
             st_ = (upstream.get("states") or {}).get(s["ref"])
             if st_:
                 s["state"] = st_
-        t["verification"] = {"last_checked_at": iso(), "verdict": verdict,
+        quiet = int((t.get("verification") or {}).get("quiet_resolved") or 0)
+        quiet = quiet + 1 if t["status"] == "resolved" and verdict in ("confirmed", "resolved") else 0
+        t["verification"] = {"last_checked_at": iso(), "verdict": verdict, "quiet_resolved": quiet,
                              "notes": res.get("notes") or "", "evidence": res["evidence"][:8],
                              "fixed_by": upstream.get("fixed_by"),
                              "checks": int((t.get("verification") or {}).get("checks") or 0) + 1}
@@ -1254,6 +1437,7 @@ def cmd_recheck_apply(args, st):
             transition(t, "needs-reinvestigation", "recheck", res.get("notes"))
         elif verdict == "invalid":
             transition(t, "invalid", "recheck", res.get("notes"))
+        compute_spice(t)
         if changed and t.get("report"):
             t["report"]["_stale"] = True
         history(t, "rechecked", "recheck", verdict=verdict, changed=sorted(changed))
@@ -1333,6 +1517,7 @@ def opt(args, name):
 COMMANDS = {
     "init": cmd_init, "paths": cmd_paths, "config": cmd_config,
     "upsert": cmd_upsert, "link": cmd_link, "ignore": cmd_ignore, "merge": cmd_merge,
+    "move-source": cmd_move_source, "related": cmd_related,
     "search": cmd_search, "get": cmd_get, "list": cmd_list, "stats": cmd_stats,
     "watermark": cmd_watermark, "claim": cmd_claim, "release": cmd_release,
     "investigated": cmd_investigated, "review": cmd_review, "pr": cmd_pr, "gate-pr": cmd_gate_pr,
@@ -1355,7 +1540,7 @@ def main(argv):
     except Blocked as e:
         print(f"ft: blocked: {e}", file=sys.stderr)
         return 2
-    except (BadInput, KeyError, IndexError, ValueError, TypeError) as e:
+    except (BadInput, KeyError, IndexError, ValueError, TypeError, re.error, StopIteration) as e:
         print(f"ft: error: {e}", file=sys.stderr)
         return 1
 

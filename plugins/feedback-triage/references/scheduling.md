@@ -1,8 +1,8 @@
 # Scheduling — Running the Loop Out of Band
 
 `/recheck` is built to run unattended: it asks no questions, touches only tracked
-tickets, and is quiet when nothing is due. `/sweep --yes` runs the whole pipeline
-unattended. Pick the runner that matches how long the loop must live.
+tickets, and is quiet when nothing is due. `/sweep` runs the whole pipeline
+without questions; its report is paste-ready text in the outbox. Pick the runner that matches how long the loop must live.
 
 | Runner | Lives | Use when |
 |---|---|---|
@@ -19,43 +19,30 @@ from a laptop see the same tickets.
 
 ```
 recheck      every 6 h         cheap; keeps facts fresh, closes resolved tickets
-sweep --yes  weekdays 08:45    recheck → intake → investigate → report
+sweep        weekdays 08:45    recheck → intake → investigate → report
 ```
 
 ## Headless (cron, CI, Routines)
 
 ```bash
-claude -p "/feedback-triage:sweep --yes" \
+claude -p "/feedback-triage:sweep" \
   --permission-mode dontAsk \
-  --allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task,Skill,ToolSearch,mcp__slack__*,mcp__github__*"
+  --allowedTools "Bash,Read,Write,Edit,Glob,Grep,Task,Skill,ToolSearch,mcp__github__*"
 ```
 
 With `--bare`, installed plugins are skipped — add `--plugin-dir <path-to>/feedback-triage`.
 
-## GitHub Actions sketch
+## GitHub Actions
 
-```yaml
-on:
-  schedule: [{ cron: "45 8 * * 1-5" }]
-  workflow_dispatch:
-jobs:
-  sweep:
-    runs-on: ubuntu-latest
-    permissions: { contents: write, pull-requests: write, issues: read }
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: "/feedback-triage:sweep --yes"
-          # plus the Slack MCP server config and plugin install for your org
-```
+Run the same headless command from a `schedule:`-triggered workflow with
+`anthropics/claude-code-action` (prompt `/feedback-triage:sweep`), `contents: write`
+and `pull-requests: write` permissions, and the plugin installed for your org.
 
 ## Unattended safety
 
-- `report.auto_send: true` (or `--yes`) is required to post to Slack without a
-  human; otherwise the run renders the outbox and stops.
+- Reports are never sent: unattended runs leave `reports/outbox/<run>/paste.txt`
+  unrecorded; after pasting, run `ft.py sent <run> --all`.
 - PRs from unattended runs are drafts when `investigate.draft_prs: true` (default).
-- The hooks still apply: no hand-written Slack reports, no PR without review, no
-  direct queue edits.
+- The hooks still apply: no PR without an approved review, no hand-edited queue.
+- Run one writer at a time per queue: two runners saving conflicting queue changes
+  makes `state.sh save` stop with `"conflict": true` rather than guess.

@@ -8,37 +8,16 @@ skills:
 disallowedTools: Edit, NotebookEdit
 ---
 
-You turn one investigation into the five prose fields of a Slack report. The
-template does all styling; you write content only. Follow `slack-reporting` and
-its style reference exactly.
+You turn one investigation into the five report fields.
 
-## Inputs (in your prompt)
+**Inputs:** `ticket` (JSON: tier, spiciness, sources, `investigation.pr_url` /
+`existing_pr`), `investigation` (your only source of facts), `related` (their
+reports' recommendations, if any), `out` (report JSON path), optional
+`lint_errors` from a previous attempt.
 
-- `ticket`: absolute path to the ticket JSON (tier, spiciness, sources, PR)
-- `investigation`: absolute path to the investigation file — your only source of
-  facts
-- `out`: absolute path for the report JSON
-- `lint_errors` (optional): errors from your previous attempt — fix every one
+1. Read both files; note tier, repro, and whether a PR (ours or existing) exists.
+2. Write `{"headline", "what", "findings", "recommendation", "ask"?}` to `out`.
+3. `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ft.py lint --tier <tier> --json <out>`
+   until `"ok": true` and no warnings.
 
-## Steps
-
-1. Read the ticket and the investigation file. Note the tier, the repro outcome,
-   and whether `investigation.pr_url` exists. Low tier with a PR: "Review and
-   merge the PR." Low tier without one: "Review and merge the branch." The
-   template prints the PR link or branch name — never repeat it in prose.
-2. Draft the fields. Check each sentence against the limits **before** writing:
-   headline ≤ 12 words, no end punctuation; other sentences ≤ 20 words; what and
-   recommendation ≤ 2 sentences; 1–3 findings.
-3. Lint your draft: `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ft.py lint --tier <tier> --json <out>`.
-   Fix every error and warning, re-lint until `"ok": true` with no warnings you
-   could reasonably remove.
-4. Leave `out` holding the final JSON:
-
-```json
-{"headline": "...", "what": "...", "findings": ["..."],
- "recommendation": "...", "ask": "<optional>"}
-```
-
-## Return (≤ 4 lines)
-
-`<ID>: lint ok` (or the remaining errors) · the out path.
+**Return (≤ 3 lines):** `<ID>: lint ok` (or remaining errors) · out path.

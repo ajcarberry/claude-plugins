@@ -19,13 +19,18 @@ CMD="${1:-}"
 ID=$(echo "${2:-}" | tr '[:lower:]' '[:upper:]')
 [[ "$ID" =~ ^FT-[0-9]{4,}$ ]] || { echo "usage: worktree.sh create|remove|discard|path FT-NNNN [slug]" >&2; exit 1; }
 LOWER=$(echo "$ID" | tr '[:upper:]' '[:lower:]')
-WT="$(dirname "$ROOT")/$(basename "$ROOT")--$LOWER"
+# inside the project (headless permission modes allow edits there), excluded from git
+WT="$ROOT/.ft-worktrees/$LOWER"
+SETUP=$(echo "$CFG" | python3 -c 'import json,sys; print(json.load(sys.stdin)["investigate"].get("setup") or "")')
 
 case "$CMD" in
   create)
-    SLUG=$(echo "${3:-change}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-41 | sed -E 's/-[^-]*$//; s/-+$//')
+    SLUG=$(echo "${3:-change}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
+    if [ ${#SLUG} -gt 40 ]; then SLUG=$(echo "$SLUG" | cut -c1-41 | sed -E 's/-[^-]*$//'); fi
     BRANCH="${PREFIX}${ID}-${SLUG}"
     if [ -d "$WT" ]; then echo "$WT"; exit 0; fi
+    EXCLUDE="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)/info/exclude"
+    mkdir -p "$(dirname "$EXCLUDE")"; grep -qxF '.ft-worktrees/' "$EXCLUDE" 2>/dev/null || echo '.ft-worktrees/' >> "$EXCLUDE"
     git -C "$ROOT" fetch -q "$REMOTE" "$BASE" 2>/dev/null || true
     START="$BASE"
     git -C "$ROOT" show-ref --verify --quiet "refs/remotes/$REMOTE/$BASE" && START="$REMOTE/$BASE"
@@ -34,6 +39,8 @@ case "$CMD" in
     else
       git -C "$ROOT" worktree add -q -b "$BRANCH" "$WT" "$START"
     fi
+    # project-defined environment setup (deps, codegen) so repros run like CI
+    if [ -n "$SETUP" ]; then (cd "$WT" && bash -c "$SETUP") >"$WT/.ft-setup.log" 2>&1 || echo "setup failed — see $WT/.ft-setup.log" >&2; fi
     echo "$WT" ;;
   remove)
     [ -d "$WT" ] && git -C "$ROOT" worktree remove --force "$WT"

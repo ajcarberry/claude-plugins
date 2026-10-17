@@ -1,5 +1,4 @@
-{{! Top-level digest. Ticket messages go in its thread (report.mode = thread). }}
+{{! Paste as a new message; paste each ticket message as a reply in its thread. }}
 {{digest_emoji}} *Feedback triage · {{date}}* · {{count}} {{noun}}
 {{lines[]}}
 {{closed[]}}
-{{thread_line}}
