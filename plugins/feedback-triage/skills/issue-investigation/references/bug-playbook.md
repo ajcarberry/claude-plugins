@@ -23,7 +23,9 @@ Then look for the circumstances:
 
 1. **Smallest faithful repro first**: a unit or integration test that drives the
    failing path with the reporter's inputs. A test is the best repro — it becomes
-   the fix's failing check.
+   the fix's failing check. Build and run only the unit that holds it (one
+   package, crate, or module: `cargo test -p X`, `pytest path`), not the whole
+   project — other investigators share the machine.
 2. If no test can reach it, a script or a manual run with exact commands.
 3. Record the outcome as one of:
    - `reproduced` — you saw the reported failure. Paste the command and output.

@@ -23,6 +23,8 @@ SCEN="$(cat "$WD/.scenario" 2>/dev/null || echo "${SCENARIO:-fixtures}")"
 export SCENARIO="$SCEN"
 
 run_claude() {
+  # Rust incremental caches are per worktree path: GBs each, no reuse across tickets
+  [ "$SCEN" = lore ] && export CARGO_INCREMENTAL=0
   local out="$WD/../$(basename "$WD")-$CMD-$(date +%s).jsonl"
   (cd "$WD" && FT_PROJECT_DIR="$WD" timeout "${EVAL_TIMEOUT:-3500}" claude -p "$1" \
      --model "$MODEL" --plugin-dir "$PLUGIN" --permission-mode bypassPermissions \
@@ -33,7 +35,7 @@ run_claude() {
 case "$CMD" in
   setup)
     rm -rf "$WD"; mkdir -p "$WD"
-    SETUP_CMD=""
+    SETUP_CMD=""; PAR=4
     if [ "$SCEN" = realworld ]; then
       SRC="${HUMANIZE:-/home/user/python-humanize/humanize}"
       cp -R "$SRC/." "$WD/"
@@ -44,7 +46,7 @@ case "$CMD" in
       # one shared build cache: worktrees symlink it (ignored by **/target/ … as a link too)
       [ -d "$SRC/target" ] && ln -sfn "$SRC/target" "$WD/target"
       REPO=epicgames/lore; CH=C0LOREFB; CHN=lore-feedback
-      SETUP_CMD="ln -sfn $SRC/target target"
+      SETUP_CMD="ln -sfn $SRC/target target"; PAR=2
     else
       cp -R "$HERE/fixtures/app/." "$WD/"
       REPO=acme/tasklite; CH=C0FEEDBK; CHN=product-feedback
@@ -58,7 +60,7 @@ case "$CMD" in
     "github": [{"repo": "$REPO", "export": "feedback-exports/github-issues.json"}],
     "slack": [{"channel": "$CHN", "id": "$CH", "export": "feedback-exports/slack-export.json"}]
   },
-  "investigate": {"base_branch": "main", "open_prs": false, "setup": "$SETUP_CMD"}
+  "investigate": {"base_branch": "main", "open_prs": false, "setup": "$SETUP_CMD", "max_parallel": $PAR}
 }
 JSON
     echo "$SCEN" > "$WD/.scenario"

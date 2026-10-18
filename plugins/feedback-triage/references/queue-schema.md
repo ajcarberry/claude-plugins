@@ -30,6 +30,9 @@
  "recheck": {"max_per_run": 20, "min_age_hours": 12}}
 ```
 
+Lower `investigate.max_parallel` to 1–2 where one build takes GBs of disk or all
+cores (Rust, C++).
+
 ## Ledger guarantees
 
 - One source ref (`github:owner/repo#N`, `slack:CHANNEL/TS`, `~N` for splits) → one

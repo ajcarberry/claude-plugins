@@ -20,9 +20,10 @@ whose review never finished (a crashed run): resume those at step 4, or, if
 "worktree lost" --downgrade`. Then `state.sh save "investigate: claimed <ids>"` at
 once, so other runners see the claims. Run dir `<runs>/investigate-<UTC ts>/`.
 
-## 2. Dispatch (parallel, cap `investigate.max_parallel`)
+## 2. Dispatch (waves of at most `investigate.max_parallel`)
 
-Tickets listed in each other's `related` go one after another (later ones can read
+Start the next ticket only when a slot frees, and **never end the turn while an
+investigator or reviewer is still running** — a headless run kills it. Tickets listed in each other's `related` go one after another (later ones can read
 earlier findings). Per ticket:
 1. `wt create <ID> <slug of title>` → worktree (runs `investigate.setup` if set).
 2. `bug-investigator` (bug) or `feature-analyst` (feature) with: ticket path,
