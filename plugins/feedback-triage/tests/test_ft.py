@@ -324,6 +324,18 @@ class Lifecycle(unittest.TestCase):
             self.assertEqual(bash(hidden), 2, hidden)
         subprocess.run(["git", "-C", self.e.dir, "config", "alias.p", "push"], check=True)
         self.assertEqual(bash("git p origin triage/sso-refresh"), 2)
+        # review round 5: redirections, unknown subcommands, config overrides, opaque constructs in any order
+        for hidden in (f"git push origin {other}:triage/sso-refresh 2>&1",
+                       f"git push origin {other}:triage/sso-refresh &>/dev/null",
+                       "git pusher origin triage/sso-refresh",
+                       "GIT_CONFIG_PARAMETERS=\"'alias.x=push'\" git x origin triage/sso-refresh",
+                       "git -c alias.q=push q origin triage/sso-refresh",
+                       "git --git-dir=/elsewhere/.git push origin triage/sso-refresh",
+                       "xargs -a refs.txt git push origin",
+                       "gh alias set p 'pr create'",
+                       "gh my-extension create --head triage/x"):
+            self.assertEqual(bash(hidden), 2, hidden)
+        self.assertEqual(bash("git log --oneline > /tmp/x 2>&1 && git status"), 0)
         subprocess.run(["git", "-C", self.e.dir, "checkout", "-q", "triage/sso-refresh"], check=True)
         self.assertEqual(bash("git push"), 2)  # implicit destination from a triage branch
         subprocess.run(["git", "-C", self.e.dir, "checkout", "-q", "main"], check=True)

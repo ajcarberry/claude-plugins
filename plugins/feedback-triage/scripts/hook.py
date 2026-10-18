@@ -66,39 +66,45 @@ def git(where, *args):
         return ""
 
 
+CONTROL = {"&&", "||", ";", "|", "&", "|&", ";;", "\n"}
+REDIRECT = re.compile(r"^[<>&]*[<>][<>&|]*$")  # >, >>, 2>&1 pieces, &>, <, <<, …
+
+
 def segments(cmd):
-    """Split a shell command line into simple commands: [(tokens, raw_text, piped_in)]."""
-    parts, buf, quote, piped, pipe_next = [], "", None, [], False
-    i = 0
-    while i < len(cmd):
-        c = cmd[i]
-        if quote:
-            buf += c
-            if c == quote:
-                quote = None
-        elif c in "'\"":
-            quote, buf = c, buf + c
-        elif cmd.startswith(("&&", "||"), i):
-            parts.append((buf, pipe_next)); buf, pipe_next = "", False; i += 1
-        elif c == "|":
-            parts.append((buf, pipe_next)); buf, pipe_next = "", True
-        elif c in ";\n&":
-            parts.append((buf, pipe_next)); buf, pipe_next = "", False
-        else:
-            buf += c
-        i += 1
-    parts.append((buf, pipe_next))
-    out = []
-    for p, piped_in in parts:
-        try:
-            toks = shlex.split(p)
-        except ValueError:
-            toks = p.split()
-        while toks and "=" in toks[0] and not toks[0].startswith("-"):
-            toks = toks[1:]  # leading VAR=value assignments
-        if toks:
-            out.append((toks, p, piped_in))
-    return out
+    """Split a command line into simple commands with a real shell tokenizer:
+    [(tokens, raw_text, piped_in)]. Redirections stay inside their command."""
+    lex = shlex.shlex(cmd.replace("\n", " ; "), posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    try:
+        toks = list(lex)
+    except ValueError:
+        return None  # unbalanced quotes: unparseable
+    out, cur, piped, nxt = [], [], False, False
+    for t in toks + [";"]:
+        if t in CONTROL:
+            if cur:
+                out.append((cur, " ".join(cur), piped))
+            cur, piped = [], t in ("|", "|&")
+            continue
+        cur.append(t)
+    cleaned = []
+    for words, raw, piped_in in out:
+        w, skip = [], False
+        for i, t in enumerate(words):
+            if skip:
+                skip = False
+                continue
+            if REDIRECT.match(t):
+                if w and w[-1].isdigit():
+                    w.pop()  # fd number before the operator
+                skip = not t.endswith("&") or True
+                continue
+            w.append(t)
+        env = []
+        while w and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", w[0]):
+            env.append(w.pop(0))  # leading VAR=value assignments
+        cleaned.append((w, raw, piped_in, env))
+    return cleaned
 
 
 def flag_value(toks, k, short, longs):
@@ -199,18 +205,23 @@ def check_push(st, args, where):
 GIT_RE = re.compile(r"(?:^|/)git$")
 GH_RE = re.compile(r"(?:^|/)gh$")
 WRAPPERS = {"env", "command", "builtin", "nice", "nohup", "time", "exec", "sudo"}
-OPAQUE = re.compile(r"\$\(|`|\beval\b|\bxargs\b|\b(?:ba|z|da|k)?sh\s+-c\b|\bsource\b|^\.\s|\balias\.")
+OPAQUE = re.compile(r"\$\(|\$\{|`|\beval\b|\bxargs\b|\b(?:ba|z|da|k)?sh\s+-c\b|\bsource\b|(?:^|[;&|]\s*)\.\s|"
+                    r"\balias\.|\bGIT_CONFIG|\bparallel\b|\bfind\b.*-exec")
+# git subcommands the gate understands; anything else (aliases, git-foo extensions) fails closed
+GIT_KNOWN = set("""add am annotate apply archive bisect blame branch bundle cat-file check-attr check-ignore
+check-mailmap check-ref-format checkout cherry cherry-pick clean clone commit commit-graph commit-tree config
+count-objects describe diff diff-files diff-index diff-tree difftool fetch for-each-ref format-patch fsck gc
+grep hash-object help init log ls-files ls-remote ls-tree merge merge-base merge-file merge-tree mergetool mv
+name-rev notes pull push range-diff read-tree rebase reflog remote repack replace rerere reset restore rev-list
+rev-parse revert rm shortlog show show-branch show-ref sparse-checkout stash status submodule switch symbolic-ref
+tag update-index update-ref var verify-commit verify-tag version whatchanged worktree write-tree""".split())
 GH_FLAGS_WITH_VALUE = {"-R", "--repo", "--hostname"}
 
 
 def check_bash(st, cmd, cwd):
     if not GIT_OR_GH.search(cmd):
         return
-    if OPAQUE.search(cmd) and PUSH_OR_PR.search(cmd) and triage_branches_exist(st, cwd):
-        block("this command hides what it runs (subshell, eval, sh -c, alias) and mentions push/PR — "
-              "run git/gh directly so the gate can check it.")
-    where = cwd
-    triage = None  # computed lazily: only needed to decide fail-closed blocks
+    triage = None  # computed lazily: fail-closed blocks only matter while triage branches exist
 
     def fail(msg):
         nonlocal triage
@@ -219,25 +230,40 @@ def check_bash(st, cmd, cwd):
         if triage:
             block(msg)
 
-    for toks, raw, piped_in in segments(cmd):
-        mentions = bool(PUSH_OR_PR.search(raw))
+    if OPAQUE.search(cmd):
+        fail("this command hides what it runs (subshell, eval, sh -c, xargs, aliases, GIT_CONFIG) "
+             "next to git/gh — run git/gh directly so the gate can check it.")
+    segs = segments(cmd)
+    if segs is None:
+        fail("could not tokenize this git/gh command — run it plainly so the gate can check it.")
+        return
+    where = cwd
+    for toks, raw, piped_in, env in segs:
         while toks and toks[0] in WRAPPERS:
             toks = toks[1:]
             while toks and (toks[0].startswith("-") or "=" in toks[0]):
+                if toks[0].startswith("GIT_"):
+                    fail("GIT_* settings through a wrapper can't be checked.")
                 toks = toks[1:]
+        if any(e.startswith("GIT_") for e in env):
+            fail("GIT_* environment settings on a git command can't be checked.")
         if not toks:
             continue
         if toks[0] in ("cd", "pushd") and len(toks) > 1:
             where = os.path.join(where, toks[1]) if not os.path.isabs(toks[1]) else toks[1]
             continue
-        handled = False
         if GIT_RE.search(toks[0]):
             j, here = 1, where
             while j < len(toks) and toks[j].startswith("-"):
-                if toks[j] in ("-C", "-c"):
+                if toks[j] in ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"):
                     if toks[j] == "-C" and j + 1 < len(toks):
                         here = os.path.join(here, toks[j + 1]) if not os.path.isabs(toks[j + 1]) else toks[j + 1]
+                    elif toks[j] != "-c":
+                        fail(f"git {toks[j]} can't be checked — run git from the repository instead.")
                     j += 2
+                elif toks[j].startswith(("--git-dir=", "--work-tree=", "--exec-path=", "--namespace=", "-c")):
+                    fail(f"git {toks[j]} can't be checked — run git from the repository instead.")
+                    j += 1
                 else:
                     j += 1
             sub = toks[j] if j < len(toks) else ""
@@ -245,56 +271,55 @@ def check_bash(st, cmd, cwd):
                 if piped_in:
                     fail("git push reading from a pipe can't be checked — run it directly.")
                 check_push(st, toks[j + 1:], here)
-            elif sub and git(here, "config", "--get", f"alias.{sub}"):
-                fail(f"git alias '{sub}' can't be checked — run the real git command.")
-            handled = bool(sub)
-        elif GH_RE.search(toks[0]):
-            args = toks[1:]
-            k = 0
-            while k < len(args) and args[k].startswith("-"):  # global flags before the command
-                k += 2 if args[k] in GH_FLAGS_WITH_VALUE else 1
-            group = args[k] if k < len(args) else ""
-            rest = args[k + 1:]
-            m = 0
-            while m < len(rest) and rest[m].startswith("-"):
-                m += 2 if rest[m] in GH_FLAGS_WITH_VALUE else 1
-            sub = rest[m] if m < len(rest) else ""
-            if group == "pr" and sub == "create":
-                if piped_in:
-                    fail("gh pr create reading from a pipe can't be checked — run it directly.")
-                head = None
-                for q in range(len(toks)):
-                    head = flag_value(toks, q, ("-H",), ("--head",)) or head
-                if head and head.startswith("@"):
-                    fail("a PR head read from a file can't be checked.")
-                check_head(st, head or git(where, "branch", "--show-current"), where)
-                handled = True
-            elif group == "pr":
-                handled = "create" not in args  # gh pr view/list/…: not a creation
-            elif group == "api":
-                text = " ".join(toks)
-                if not re.search(r"\bpulls\b|graphql", text):
-                    handled = True
-                elif re.search(r"--input\b|graphql", text):
-                    fail("gh api --input / graphql PR calls can't be checked — use gh pr create.")
-                    handled = True
-                else:
-                    heads = []
-                    for q in range(len(toks)):
-                        val = flag_value(toks, q, ("-f", "-F"), ("--field", "--raw-field"))
-                        if val and val.startswith("head="):
-                            heads.append(val[5:])
-                    if any(h.startswith("@") for h in heads):
-                        fail("a PR head read from a file can't be checked.")
-                    if not heads and re.search(re.escape(st.cfg["investigate"]["branch_prefix"]), text, re.I):
-                        fail("this gh api call names a triage branch but no head could be parsed.")
-                    for h in heads:
-                        check_head(st, h, where)
-                    handled = True
-            else:
-                handled = True
-        if mentions and not handled:
-            fail("could not parse this push/PR command — run git push / gh pr create directly so the gate can check it.")
+            elif sub and sub not in GIT_KNOWN:
+                fail(f"git '{sub}' is not a built-in command the gate knows (alias or extension) — "
+                     "run the real git command.")
+            continue
+        if not GH_RE.search(toks[0]):
+            if PUSH_OR_PR.search(raw):
+                fail("could not parse this push/PR command — run git push / gh pr create directly.")
+            continue
+        args = toks[1:]
+        k = 0
+        while k < len(args) and args[k].startswith("-"):  # global flags before the command
+            k += 2 if args[k] in GH_FLAGS_WITH_VALUE else 1
+        group = args[k] if k < len(args) else ""
+        rest = args[k + 1:]
+        m = 0
+        while m < len(rest) and rest[m].startswith("-"):
+            m += 2 if rest[m] in GH_FLAGS_WITH_VALUE else 1
+        sub = rest[m] if m < len(rest) else ""
+        if group == "pr" and (sub == "create" or "create" in rest):
+            if piped_in:
+                fail("gh pr create reading from a pipe can't be checked — run it directly.")
+            head = None
+            for q in range(len(toks)):
+                head = flag_value(toks, q, ("-H",), ("--head",)) or head
+            if head and head.startswith("@"):
+                fail("a PR head read from a file can't be checked.")
+            check_head(st, head or git(where, "branch", "--show-current"), where)
+        elif group == "api":
+            text = " ".join(toks)
+            if not re.search(r"\bpulls\b|graphql", text):
+                continue
+            if re.search(r"--input\b|graphql", text):
+                fail("gh api --input / graphql PR calls can't be checked — use gh pr create.")
+                continue
+            heads = []
+            for q in range(len(toks)):
+                val = flag_value(toks, q, ("-f", "-F"), ("--field", "--raw-field"))
+                if val and val.startswith("head="):
+                    heads.append(val[5:])
+            if any(h.startswith("@") for h in heads):
+                fail("a PR head read from a file can't be checked.")
+            if not heads and re.search(re.escape(st.cfg["investigate"]["branch_prefix"]), text, re.I):
+                fail("this gh api call names a triage branch but no head could be parsed.")
+            for h in heads:
+                check_head(st, h, where)
+        elif group == "alias" or (group and group not in {"pr", "api", "issue", "repo", "run", "workflow",
+                                                           "auth", "browse", "release", "search", "status",
+                                                           "gist", "label", "cache", "variable", "secret"}):
+            fail(f"gh '{group}' is not a command the gate knows (alias or extension) — use gh pr create.")
 
 
 def main():
