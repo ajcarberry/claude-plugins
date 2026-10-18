@@ -290,6 +290,7 @@ class Lifecycle(unittest.TestCase):
         self.investigate(tier="low", branch="triage/sso-refresh")
         self.assertEqual(self.e.run("review", self.id, "--verdict", "approved", "--notes", "ok", ok=False).returncode, 1)
         self.e.j("review", self.id, "--verdict", "approved", "--notes", "ok", "--commit", head)
+        self.assertEqual(self.e.j("get", self.id)["investigation"]["commit"], head)
         bash = lambda c: self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash",
                                       "tool_input": {"command": c}}).returncode
         self.assertEqual(bash("git push origin triage/sso-refresh"), 0)
@@ -532,9 +533,13 @@ class Lifecycle(unittest.TestCase):
 
     def test_downgrade_returns_for_options_and_forbids_low(self):
         self.investigate(tier="low", branch="triage/x")
+        self.e.j("review", self.id, "--verdict", "changes", "--notes", "no test for the empty case")
         self.e.j("review", self.id, "--verdict", "changes", "--notes", "misses edge case", "--downgrade")
         t = self.e.j("get", self.id)
         self.assertEqual((t["status"], t["investigation"]["prior_attempt"]), ("needs-reinvestigation", "triage/x"))
+        self.assertEqual(t["complexity"]["tier"], "medium")  # the queue says what happened
+        notes = [h.get("notes") for h in t["history"] if h["event"] == "review"]
+        self.assertEqual(notes, ["no test for the empty case", "misses edge case"])  # first round kept
         self.e.j("claim")
         res = {"id": self.id, "complexity": {"tier": "low", "rationale": "r"},
                "repro": "reproduced", "investigation_file": self.inv, "branch": "triage/y"}

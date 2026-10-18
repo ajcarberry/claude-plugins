@@ -1189,13 +1189,15 @@ def cmd_review(args, st):
             commit = opt(args, "--commit")
             if not commit or not re.fullmatch(r"[0-9a-f]{7,40}", commit):
                 raise BadInput("an approval needs --commit <sha of the reviewed head>")
-            inv["reviewed_commit"] = commit
+            inv["reviewed_commit"] = inv["commit"] = commit  # a revise moves the branch head
         else:
             inv.pop("reviewed_commit", None)
-        history(t, "review", "reviewer", verdict=verdict)
+        # every round's notes stay in history; review_notes holds the latest
+        history(t, "review", "reviewer", verdict=verdict, notes=notes, commit=opt(args, "--commit"))
         if verdict == "changes" and "--downgrade" in args:
             inv["review"] = "rejected"
             inv["prior_attempt"] = inv.get("branch")
+            t["complexity"] = {"tier": "medium", "rationale": f"low attempt rejected twice in review: {notes}"}
             history(t, "tier-downgraded", "reviewer", to="medium", notes=notes)
             transition(t, "needs-reinvestigation", "reviewer", f"low attempt rejected twice: {notes}")
         st.put(t)
