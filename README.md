@@ -3,8 +3,8 @@
 Development and product workflow plugins for
 [Claude Code](https://code.claude.com/docs).
 
-Four plugins, each useful alone. Launchpad is the only one that calls the others —
-always optionally, with a stated fallback.
+Five plugins, each useful alone. Launchpad is the only one that calls the others —
+always optionally, with a stated fallback. feedback-triage is fully self-contained.
 
 ## Plugins
 
@@ -43,6 +43,19 @@ supersedes).
 project's own convention (documented → inferred from git log → default), never
 pushes unasked.
 
+### [feedback-triage](plugins/feedback-triage/) — feedback to engineering, hands-off
+
+```
+/intake → queue → /investigate → /report        (+ /recheck on a loop; /sweep runs all)
+```
+
+GitHub issues and Slack channels → a deduplicated, persistent ticket queue (every
+place an issue was raised linked to one ticket) → one subagent per ticket, depth
+gated by complexity (high: findings · medium: options · low: a reviewed draft PR)
+→ a templated, tracker-ready report per ticket (Jira, Linear, GitHub, …) in
+ASD-STE100 style, with a proposed fix when one is ready to merge. A stdlib `ft.py` owns the ledger, state machine, lint, and rendering;
+hooks block hand-edited queue files, unreviewed PRs, and hand-written reports.
+
 ## Global baseline
 
 [`global/`](global/) versions a ~40-line `~/.claude/CLAUDE.md` — surgical changes,
@@ -63,7 +76,8 @@ Add to your project's `.claude/settings.json`:
     "launchpad@claude-plugins": true,
     "tpm@claude-plugins": true,
     "docs@claude-plugins": true,
-    "commit@claude-plugins": true
+    "commit@claude-plugins": true,
+    "feedback-triage@claude-plugins": true
   }
 }
 ```

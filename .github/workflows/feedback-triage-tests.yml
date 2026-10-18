@@ -1,0 +1,19 @@
+name: feedback-triage tests
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/feedback-triage/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Unit tests (ft.py, hooks)
+        run: python3 -m unittest discover -s plugins/feedback-triage/tests -v
