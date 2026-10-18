@@ -14,14 +14,12 @@ PHASES = {  # who: files loaded (command/agent body + skills it loads + refs it 
     "recheck/ticket-verifier": ["agents/ticket-verifier.md", "skills/ticket-verification/SKILL.md"],
     "investigate/orchestrator": ["commands/investigate.md"],
     "investigate/bug-investigator": ["agents/bug-investigator.md", "skills/issue-investigation/SKILL.md",
-                                     "skills/issue-investigation/references/bug-playbook.md", "references/complexity.md",
-                                     "references/spiciness.md", "templates/investigation-bug.md"],
+                                     "skills/issue-investigation/references/bug-playbook.md", "references/complexity.md", "templates/investigation-bug.md"],
     "investigate/feature-analyst": ["agents/feature-analyst.md", "skills/issue-investigation/SKILL.md",
-                                    "skills/issue-investigation/references/feature-playbook.md", "references/complexity.md",
-                                    "references/spiciness.md", "templates/investigation-feature.md"],
+                                    "skills/issue-investigation/references/feature-playbook.md", "references/complexity.md", "templates/investigation-feature.md"],
     "investigate/change-reviewer": ["agents/change-reviewer.md"],
     "report/orchestrator": ["commands/report.md"],
-    "report/report-writer": ["agents/report-writer.md", "skills/slack-reporting/SKILL.md"],
+    "report/report-writer": ["agents/report-writer.md", "skills/issue-reporting/SKILL.md"],
 }
 
 

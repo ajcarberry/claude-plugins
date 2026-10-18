@@ -1,4 +1,6 @@
-## <FT-NNNN> · <ticket title>
+## <ticket title>
+
+<!-- never put internal FT-… ids in a PR -->
 
 <ticket summary — the user problem>
 

@@ -1,5 +1,0 @@
-{{! Paste as a new message; paste each ticket message as a reply in its thread. }}
-{{digest_emoji}} *Feedback triage · {{date}}* · {{count}} {{noun}}
-{{lines[]}}
-{{closed[]}}
-{{backlog[]}}

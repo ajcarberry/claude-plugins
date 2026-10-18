@@ -1,5 +1,5 @@
 ---
-description: Configure feedback-triage for this project — sources (GitHub repos, Slack channels), report channel, persistence, worktree setup command, and a tool check
+description: Configure feedback-triage for this project — sources (GitHub repos, Slack channels), the tracker reports go to, persistence, worktree setup command, and a tool check
 allowed-tools: Bash, Read, Write, Edit, ToolSearch, AskUserQuestion
 argument-hint: "[--check]"
 ---
@@ -14,7 +14,7 @@ argument-hint: "[--check]"
 1. `ft init` (creates the state dir and a default config if absent).
 2. One AskUserQuestion round, skipping what config already has:
    - GitHub repos to read (default: `git remote get-url origin`).
-   - Slack channels to read, and the channel reports will be pasted into.
+   - Slack channels to read, and the tracker reports will be pasted into (Jira, Linear, …).
    - Persistence: `branch` (recommended — the queue lives on its own
      `feedback-triage/state` branch shared by every run), `commit`, or `none`.
    - Base branch; whether PRs open as drafts (default yes).
@@ -29,7 +29,7 @@ argument-hint: "[--check]"
    (`${CLAUDE_PLUGIN_ROOT}/scripts/state.sh`).
 
 ```
-feedback-triage configured — sources: <n GitHub, n Slack> · reports: paste into <#channel>
+feedback-triage configured — sources: <n GitHub, n Slack> · reports: paste into <tracker>
   State: <dir> (persist: <mode>) · Tools: GitHub <ok|missing> · Slack read <ok|missing>
   Next: /feedback-triage:intake · Loop: /loop 6h /feedback-triage:recheck
 ```

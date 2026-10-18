@@ -2,7 +2,7 @@
 """ft — the feedback-triage queue CLI.
 
 Every queue mutation goes through this script, so the ledger, schema, state
-machine, spiciness math, Slack lint, and Slack rendering stay deterministic.
+machine, report lint, and report rendering stay deterministic.
 Skills decide *what* to write; this script decides *whether it is valid*.
 Stdlib only. Output is JSON on stdout unless noted; errors go to stderr with
 exit 1 (bad input) or 2 (blocked by a rule).
@@ -52,8 +52,8 @@ DEFAULT_CONFIG = {
     "sources": {"github": [], "slack": []},
     "intake": {"lookback_days": 14, "overlap_hours": 24},
     "investigate": {"max_parallel": 4, "max_per_run": 8, "base_branch": "main",
-                    "branch_prefix": "ft/", "open_prs": True, "draft_prs": True, "setup": ""},
-    "report": {"channel": "", "min_level": 1},
+                    "branch_prefix": "triage/", "open_prs": True, "draft_prs": True, "setup": ""},
+    "report": {"tracker": ""},
     "recheck": {"max_per_run": 20, "min_age_hours": 12},
 }
 
@@ -331,14 +331,13 @@ def validate_ticket(t):
     if t.get("status") in ("investigated", "reported"):
         _need(c is not None, "investigated tickets need complexity", errs)
         _need(bool(inv.get("file")), "investigated tickets need investigation.file", errs)
-        _need(t.get("spiciness") is not None, "investigated tickets need spiciness", errs)
         if c and c.get("tier") == "low" and inv.get("review") == "approved":
             _need(bool(inv.get("branch")), "low tier with approved review needs investigation.branch", errs)
     if errs:
         raise BadInput(f"{t.get('id', '?')} invalid: " + "; ".join(errs))
 
 
-# --------------------------------------------------------------- spiciness
+# --------------------------------------------------------------- reporters
 
 def reporters(t):
     names = set()
@@ -355,50 +354,7 @@ def reporters(t):
     return len(names) + anon
 
 
-def momentum(t):
-    n = reporters(t)
-    return 0 if n <= 1 else 1 if n <= 3 else 2
-
-
-def readiness(t):
-    inv = t.get("investigation") or {}
-    tier = (t.get("complexity") or {}).get("tier")
-    if (inv.get("existing_pr") or {}).get("verdict") == "fixes":
-        return 1
-    return 1 if tier == "low" and inv.get("review") == "approved" else 0
-
-
-def compute_spice(t):
-    sp = t.get("spiciness")
-    if not sp:
-        return None
-    f = sp["factors"]
-    f["momentum"] = momentum(t)
-    f["readiness"] = readiness(t)
-    score = 2 * f["impact"] + f["reach"] + f["momentum"] + f["readiness"]
-    level = 1 if score <= 3 else 2 if score <= 6 else 3 if score <= 9 else 4
-    if f["impact"] == 3:
-        level = max(level, 3)
-    level = max(1, min(4, level + int(sp.get("bump") or 0)))
-    sp["score"] = score
-    sp["level"] = level
-    return sp
-
-
-def set_spice(t, impact, reach, bump=0, bump_reason=None):
-    for name, v in (("impact", impact), ("reach", reach)):
-        if not isinstance(v, int) or not 0 <= v <= 3:
-            raise BadInput(f"{name} must be an integer 0–3")
-    if bump not in (-1, 0, 1):
-        raise BadInput("bump must be -1, 0, or 1")
-    if bump and not bump_reason:
-        raise BadInput("a bump needs bump_reason")
-    t["spiciness"] = {"factors": {"impact": impact, "reach": reach},
-                      "bump": bump, "bump_reason": bump_reason or None}
-    compute_spice(t)
-
-
-# -------------------------------------------------------------- slack lint
+# ------------------------------------------------------------- report lint
 
 BANNED = {
     "utilize": "use", "utilise": "use", "leverage": "use", "facilitate": "help",
@@ -413,6 +369,7 @@ HEDGES = ("might possibly", "could potentially", "it seems like", "sort of", "ki
 PASSIVE = re.compile(r"\b(?:is|are|was|were|be|been|being)\s+(?:\w+ly\s+)?(?:\w+ed|broken|written|taken|"
                      r"given|shown|seen|known|chosen|hidden|driven|frozen|forgotten|done|made|sent|"
                      r"built|found|kept|left|lost|held|told|caught|paid)\b", re.I)
+INTERNAL_ID = re.compile(r"\bFT-\d{2,}\b", re.I)  # queue ids are ours; they never reach a report
 EMOJI = re.compile("[\U0001F300-\U0001FAFF☀-➿⬀-⯿]|:[a-z0-9_+-]+:")
 MARKUP = re.compile(r"\*\*|__|^#|<[^>]+\|[^>]+>|\[[^\]]+\]\([^)]+\)", re.M)
 
@@ -420,7 +377,7 @@ LIMITS = {  # field: (max words per sentence, max sentences, max total words)
     "headline": (12, 1, 12),
     "what": (20, 2, 40),
     "finding": (20, 1, 20),
-    "recommendation": (20, 2, 40),
+    "fix": (25, 3, 60),
     "ask": (20, 1, 20),
 }
 
@@ -459,6 +416,8 @@ def lint_text(field, text):
     for h in HEDGES:
         if h in low:
             errs.append(f"{field}: hedge \"{h}\" — state the confidence instead")
+    if INTERNAL_ID.search(text):
+        errs.append(f"{field}: internal ticket id \"{INTERNAL_ID.search(text).group(0)}\" — refer to the issue or describe it instead")
     if EMOJI.search(text):
         errs.append(f"{field}: no emoji in prose — the template adds them")
     if MARKUP.search(text):
@@ -472,7 +431,8 @@ def lint_text(field, text):
     return errs, warns
 
 
-def lint_report(report, tier, pr_numbers=None):
+def lint_report(report, fix_ready, pr_numbers=None):
+    """fix_ready: the report carries a high-confidence fix (verified PR or our reviewed change)."""
     errs, warns = [], []
     if not isinstance(report, dict):
         return ["report must be an object"], []
@@ -481,32 +441,30 @@ def lint_report(report, tier, pr_numbers=None):
         errs += e
         warns += w
     findings = report.get("findings") or []
-    if not 1 <= len(findings) <= 3:
-        errs.append(f"findings: {len(findings)} items (need 1–3)")
+    if not 1 <= len(findings) <= 4:
+        errs.append(f"findings: {len(findings)} items (need 1–4)")
     for i, item in enumerate(findings):
         e, w = lint_text("finding", item or "")
         errs += [x.replace("finding:", f"findings[{i}]:") for x in e]
         warns += [x.replace("finding:", f"findings[{i}]:") for x in w]
-    rec = report.get("recommendation")
-    if tier in ("low", "medium") and not rec:
-        errs.append(f"recommendation: required for {tier} tier")
-    if rec:
-        e, w = lint_text("recommendation", rec)
+    fix = report.get("fix")
+    if fix_ready and not fix:
+        errs.append("fix: required — this report carries a ready fix; say what it changes and what to check")
+    if fix and not fix_ready:
+        errs.append("fix: only for a high-confidence fix (verified PR or reviewed change); put research in findings")
+    if fix:
+        e, w = lint_text("fix", fix)
         errs += e
         warns += w
+        named = set(re.findall(r"\bPR #?(\d+)", fix))
+        if pr_numbers is not None and named - pr_numbers:
+            errs.append(f"fix names PR #{', #'.join(sorted(named))} but the report links "
+                        f"PR #{', #'.join(sorted(pr_numbers)) or 'none'} — they must agree")
     if report.get("ask"):
         e, w = lint_text("ask", report["ask"])
         errs += e
         warns += w
-    rec_text = report.get("recommendation") or ""
-    if pr_numbers is not None and rec_text:
-        named = set(re.findall(r"\bPR #?(\d+)", rec_text))
-        if named - pr_numbers:
-            errs.append(f"recommendation names PR #{', #'.join(sorted(named))} but the report links "
-                        f"PR #{', #'.join(sorted(pr_numbers))} — they must agree")
-    for m in re.finditer(r"\b[Oo]ption ([A-Z])\b(?!\s*[:—-])", rec_text):
-        errs.append(f"recommendation: say what option {m.group(1)} is (\"Pick option {m.group(1)}: …\") — readers never see the options")
-    extra = set(report) - {"headline", "what", "findings", "recommendation", "ask"}
+    extra = set(report) - {"headline", "what", "findings", "fix", "ask"}
     if extra:
         errs.append(f"unknown report fields: {sorted(extra)}")
     return errs, warns
@@ -515,14 +473,14 @@ def lint_report(report, tier, pr_numbers=None):
 # --------------------------------------------------------------- rendering
 
 def load_theme(root):
-    theme = read_json(os.path.join(PLUGIN_ROOT, "templates", "slack", "theme.json"))
+    theme = read_json(os.path.join(PLUGIN_ROOT, "templates", "report", "theme.json"))
     over = read_json(os.path.join(root, ".claude", "feedback-triage", "theme.json"))
     return deep_merge(theme, over or {})
 
 
 def load_template(root, name):
-    for base in (os.path.join(root, ".claude", "feedback-triage", "slack"),
-                 os.path.join(PLUGIN_ROOT, "templates", "slack")):
+    for base in (os.path.join(root, ".claude", "feedback-triage", "report"),
+                 os.path.join(PLUGIN_ROOT, "templates", "report")):
         p = os.path.join(base, name)
         if os.path.exists(p):
             with open(p) as f:
@@ -532,11 +490,22 @@ def load_template(root, name):
 
 def fill(template, values):
     """{{key}} substitution. A line whose placeholders are all empty is dropped.
-    A line containing {{key[]}} repeats once per list item."""
-    out = []
+    A line containing {{key[]}} repeats once per list item. Lines between
+    {{#key}} and {{/key}} are kept only when key is non-empty (whole sections)."""
+    out, skip = [], []
     for line in template.splitlines():
-        if line.lstrip().startswith("{{!"):
+        stripped = line.strip()
+        if stripped.startswith("{{!"):
             continue  # template comment
+        m = re.fullmatch(r"\{\{([#/])(\w+)\}\}", stripped)
+        if m:
+            if m.group(1) == "#":
+                skip.append(not values.get(m.group(2)))
+            elif skip:
+                skip.pop()
+            continue
+        if any(skip):
+            continue
         keys = re.findall(r"\{\{(\w+)(\[\])?\}\}", line)
         if not keys:
             out.append(line)
@@ -549,85 +518,88 @@ def fill(template, values):
         if all(not values.get(k) for k, _ in keys):
             continue
         out.append(fill_scalars(line, values))
-    return "\n".join(line.rstrip() for line in out).strip() + "\n"
+    text = "\n".join(line.rstrip() for line in out).strip() + "\n"
+    return re.sub(r"\n{3,}", "\n\n", text)
 
 
 def fill_scalars(line, values):
     return re.sub(r"\{\{(\w+)\}\}", lambda m: str(values.get(m.group(1)) or ""), line)
 
 
-def slack_link(url, label):
-    """Paste-ready: Slack's composer auto-links bare URLs; <url|label> only works via the API."""
-    return f"{label} {url}"
-
-
-def source_label(s, theme):
+def source_line(s, theme):
     ref = s["ref"]
     if ref.startswith("github:"):
-        return f"{theme['source']['github']} {ref.split(':', 1)[1]}"
-    if ref.startswith("slack:"):
+        label = f"{theme['source']['github']} {ref.split(':', 1)[1]}"
+    elif ref.startswith("slack:"):
         ch = s.get("channel_name") or ref.split(":")[1].split("/")[0]
-        return f"{theme['source']['slack']} #{ch.lstrip('#')}"
-    return f"{theme['source']['other']} {ref.split(':')[0]}"
+        label = f"{theme['source']['slack']} #{ch.lstrip('#')}"
+    else:
+        label = f"{theme['source']['other']} {ref.split(':')[0]}"
+    who = f" ({s['author']})" if s.get("author") else ""
+    return f"{label}{who}: {s['url']}" if s.get("url") else f"{label}{who}"
+
+
+def fix_kind(t):
+    """'existing' (a linked upstream PR we tested fixes it), 'ours' (our reviewed PR),
+    'branch' (our reviewed change, no PR opened), or None (a researched report)."""
+    inv = t.get("investigation") or {}
+    if (inv.get("existing_pr") or {}).get("verdict") == "fixes":
+        return "existing"
+    if (t.get("complexity") or {}).get("tier") == "low" and inv.get("review") == "approved":
+        return "ours" if inv.get("pr_url") else "branch"
+    return None
+
+
+def fix_pr_numbers(t):
+    inv = t.get("investigation") or {}
+    kind = fix_kind(t)
+    url = inv.get("pr_url") if kind == "ours" else (inv.get("existing_pr") or {}).get("url") if kind == "existing" else None
+    return {m.group(1) for m in [re.search(r"/pull/(\d+)", url or "")] if m}
 
 
 def ticket_values(t, theme):
-    sp = t["spiciness"]
     tier = t["complexity"]["tier"]
     inv = t.get("investigation") or {}
     rep = t["report"]
-    links = [slack_link(s["url"], source_label(s, theme)) if s.get("url") else source_label(s, theme)
-             for s in t["sources"][:4]]
-    if len(t["sources"]) > 4:
-        links.append(f"+{len(t['sources']) - 4} more")
-    effective_tier = tier
-    branch = ""
+    kind = fix_kind(t)
     ext = inv.get("existing_pr") or {}
-    if ext.get("verdict") in ("fixes", "partial", "unverified"):
-        effective_tier = "existing_pr_" + ext["verdict"]  # someone already has a fix in flight
-    elif tier == "low" and not inv.get("pr_url"):
-        if inv.get("review") == "approved" and inv.get("branch"):
-            effective_tier = "low_branch"  # reviewed fix exists, no change request opened
-            branch = f"{theme['tier']['low_branch']['emoji']} `{inv['branch']}`"
-        else:
-            effective_tier = "medium"
-    pr_url = inv.get("pr_url") or (ext.get("url") if effective_tier.startswith("existing_pr") else "")
-    pr = slack_link(pr_url, f"{theme['pr']} {theme['labels']['pr']}") if pr_url else ""
-    repro = ""
-    if t["type"] == "bug" and inv.get("repro") in theme.get("repro", {}):
-        repro = theme["repro"][inv["repro"]]
+    if kind == "existing":
+        status, link = theme["status"]["fix_existing"], ext["url"]
+    elif kind == "ours":
+        status, link = theme["status"]["fix_ours"], inv["pr_url"]
+    elif kind == "branch":
+        status, link = theme["status"]["fix_branch"].replace("{branch}", inv["branch"]), ""
+    else:
+        status, link = theme["status"][tier], ""
+    sources = [source_line(s, theme) for s in t["sources"]]
+    seen = {link}
+    for s in t["sources"]:
+        for p in s.get("linked_prs") or []:
+            if p.get("url") and p["url"] not in seen:
+                seen.add(p["url"])
+                sources.append(f"{theme['source']['pr']} ({p.get('state') or 'linked'}): {p['url']}")
+    n = reporters(t)
+    repro = theme["repro"].get(inv.get("repro") or "", "") if t["type"] == "bug" else ""
     return {
-        "id": t["id"],
-        "spice_emoji": theme["spice"][str(sp["level"])]["emoji"],
-        "spice_label": theme["spice"][str(sp["level"])]["label"],
-        "type_emoji": theme["type"][t["type"]]["emoji"],
-        "type_label": theme["type"][t["type"]]["label"],
-        "tier_emoji": theme["tier"][effective_tier]["emoji"],
-        "tier_label": theme["tier"][effective_tier]["label"],
-        "raised": f"{theme['labels']['raised']} {reporters(t)}×",
-        "repro": repro,
         "headline": rep["headline"],
+        "intro": theme["intro"]["fix" if kind else "report"],
+        "type_label": theme["type"][t["type"]],
+        "status": status,
+        "repro_part": f" · **Reproduced:** {repro}" if repro else "",
+        "reporters": f"{n} {'person' if n == 1 else 'people'}",
         "what": rep["what"],
         "findings": rep["findings"],
-        "recommendation": rep.get("recommendation") or "",
+        "fix": rep.get("fix") or "",
+        "fix_link": f"{theme['labels']['review']} {link}" if link and rep.get("fix") else "",
         "ask": rep.get("ask") or "",
-        "pr": pr,
-        "branch": branch,
-        "sources": " · ".join(links),
-        "label_what": theme["labels"]["what"],
-        "label_found": theme["labels"]["found"],
-        "label_do": theme["labels"]["do"],
-        "label_ask": theme["labels"]["ask"],
-        "rec_line": f"*{theme['labels']['do']}* {rep['recommendation']}" if rep.get("recommendation") else "",
-        "ask_line": f"*{theme['labels']['ask']}* {rep['ask']}" if rep.get("ask") else "",
+        "sources": sources,
     }
 
 
 def report_hash(t):
-    sp = t.get("spiciness") or {}
     inv = t.get("investigation") or {}
     rep = {k: v for k, v in (t.get("report") or {}).items() if not k.startswith("_")}
-    basis = {"report": rep, "level": sp.get("level"),
+    basis = {"report": rep, "fix": fix_kind(t), "reporters": reporters(t),
              "tier": (t.get("complexity") or {}).get("tier"), "pr": inv.get("pr_url"),
              "existing_pr": (inv.get("existing_pr") or {}).get("verdict"),
              "status": "closed" if t["status"] in CLOSED_STATUSES else "open"}
@@ -710,7 +682,6 @@ def attach_source(st, idx, tid, raw, relation, actor, note=None):
     history(t, "source-added", actor, ref=src["ref"], relation=relation, **({"note": note} if note else {}))
     if t["status"] in ("resolved", "invalid", "blocked"):
         transition(t, "needs-reinvestigation", actor, f"new report {src['ref']} after {t['status']}")
-    compute_spice(t)
     st.put(t)
     return tid, True
 
@@ -726,7 +697,7 @@ def resolve_dup_target(idx, value):
 
 
 def refresh_existing(st, idx, ref, src_raw):
-    """Re-reading a tracked source merges new +1s and state, so momentum stays live."""
+    """Re-reading a tracked source merges new +1s, state, and linked PRs."""
     t = resolve_target(st, idx["refs"][ref])
     for s_ in t["sources"]:
         if s_["ref"] != ref:
@@ -744,7 +715,6 @@ def refresh_existing(st, idx, ref, src_raw):
             transition(t, "needs-reinvestigation", "intake", f"{ref} reopened upstream")
         if changed:
             history(t, "source-refreshed", "intake", ref=ref)
-            compute_spice(t)
             st.put(t)
         return t["id"], changed
     return t["id"], False
@@ -811,7 +781,7 @@ def cmd_upsert(args, st):
             "component": cand.get("component") or "",
             "severity": cand.get("severity") or "",
             "environment": cand.get("environment") or {},
-            "complexity": None, "spiciness": None,
+            "complexity": None,
             "investigation": {}, "verification": {}, "report": None, "reported": {},
             "history": [],
         }
@@ -868,7 +838,6 @@ def cmd_move_source(args, st):
             transition(dst_t, "needs-reinvestigation", "intake", f"moved-in report {ref}")
         for t, ev in ((src_t, "source-removed"), (dst_t, "source-added")):
             history(t, ev, "intake", ref=ref, reason=reason)
-            compute_spice(t)
             st.put(t)
         st.save_index(idx)
         st.log("moved", ref=ref, frm=src_t["id"], to=dst_t["id"])
@@ -912,7 +881,6 @@ def cmd_merge(args, st):
             into["sources"].append(moved)
             idx["refs"][s["ref"]] = into_id
         history(into, "merged-in", "merge", source=dup_id, reason=reason)
-        compute_spice(into)
         transition(dup, "duplicate", "merge", reason)
         dup["duplicate_of"] = into_id
         for other in st.all():
@@ -977,9 +945,8 @@ def cmd_list(args, st):
             print(f"{t['id']} {t['type'][0]} {t['title']}")
     else:
         for t in rows:
-            sp = (t.get("spiciness") or {}).get("level", "-")
             tier = (t.get("complexity") or {}).get("tier", "-")
-            print(f"{t['id']}  {t['status']:<22} {t['type']:<8} tier={tier:<6} spice={sp}  "
+            print(f"{t['id']}  {t['status']:<22} {t['type']:<8} tier={tier:<6} "
                   f"raised={reporters(t)}  {t['title']}")
 
 
@@ -992,7 +959,6 @@ def cmd_stats(args, st):
     emit({"total": len(tickets), "by_status": by(lambda t: t["status"]),
           "by_type": by(lambda t: t["type"]),
           "by_tier": by(lambda t: (t.get("complexity") or {}).get("tier") or "-"),
-          "by_spice": by(lambda t: (t.get("spiciness") or {}).get("level") or "-"),
           "tracked_refs": len(idx["refs"]), "ignored_refs": len(idx["ignored"]),
           "watermarks": idx["watermarks"],
           "multi_raised": [t["id"] for t in tickets if len(t["sources"]) > 1]})
@@ -1047,7 +1013,8 @@ def cmd_related(args, st):
     if rel is None:
         rel = related(st, t)
     emit([{"id": r, "title": st.get(r)["title"],
-           "recommendation": (st.get(r).get("report") or {}).get("recommendation")} for r in rel])
+           "fix": (st.get(r).get("report") or {}).get("fix"),
+           "findings": (st.get(r).get("report") or {}).get("findings")} for r in rel])
 
 
 def cmd_claim(args, st):
@@ -1095,9 +1062,9 @@ def cmd_release(args, st):
     emit({"id": tid, "status": target})
 
 
-INVESTIGATION_KEYS = {"id", "status", "type", "complexity", "impact", "reach", "repro",
+INVESTIGATION_KEYS = {"id", "status", "type", "complexity", "repro",
                       "investigation_file", "branch", "worktree", "commit", "summary_correction",
-                      "bump", "bump_reason", "concerns", "options_count", "root_cause", "existing_pr",
+                      "concerns", "options_count", "root_cause", "existing_pr",
                       "fixed_on_base"}
 
 
@@ -1180,13 +1147,12 @@ def cmd_investigated(args, st):
         if res.get("summary_correction"):
             history(t, "summary-corrected", "investigate", old=t["summary"])
             t["summary"] = res["summary_correction"]
-        set_spice(t, res.get("impact"), res.get("reach"), int(res.get("bump") or 0), res.get("bump_reason"))
         if t.get("report"):
             t["report"]["_stale"] = True  # reinvestigated: old prose may be wrong now
         transition(t, "investigated", "investigate")
         st.put(t)
         st.log("investigated", id=tid, tier=c["tier"])
-    emit({"id": tid, "tier": c["tier"], "spice": t["spiciness"]["level"],
+    emit({"id": tid, "tier": c["tier"],
           "next": "review" if inv.get("review") == "pending" else "report"})
 
 
@@ -1211,7 +1177,6 @@ def cmd_review(args, st):
             inv["prior_attempt"] = inv.get("branch")
             history(t, "tier-downgraded", "reviewer", to="medium", notes=notes)
             transition(t, "needs-reinvestigation", "reviewer", f"low attempt rejected twice: {notes}")
-        compute_spice(t)
         st.put(t)
     emit({"id": tid, "review": t["investigation"]["review"], "tier": t["complexity"]["tier"]})
 
@@ -1234,14 +1199,14 @@ def cmd_pr(args, st):
 
 def cmd_gate_pr(args, st):
     """Exit 0 if BRANCH may become a change request, else 2. Used by the PR hook."""
-    branch = opt(args, "--branch") or ""
+    branch = re.sub(r"^(?:refs/heads/|\+)", "", opt(args, "--branch") or "")
     prefix = st.cfg["investigate"]["branch_prefix"]
-    m = re.match(rf"^{re.escape(prefix)}(FT-\d{{4,}})\b", branch, re.I)
-    if not m:
+    if not branch.startswith(prefix) or not os.path.exists(st.index_path):
         return  # not a feedback-triage branch — not our business
-    if not os.path.exists(st.index_path):
-        return
-    t = st.get(m.group(1).upper())
+    t = next((x for x in st.all() if (x.get("investigation") or {}).get("branch") == branch), None)
+    if not t:
+        raise Blocked(f"{branch} is a triage branch no ticket has finished with — only a reviewed "
+                      "low-complexity change becomes a change request")
     tier = (t.get("complexity") or {}).get("tier")
     review = t["investigation"].get("review")
     if tier != "low":
@@ -1259,15 +1224,11 @@ def cmd_report_set(args, st):
         t = st.get(tid)
         if t["status"] not in REPORTABLE:
             raise Blocked(f"{tid} is {t['status']} — only investigated/reported tickets get a report")
-        inv = t.get("investigation") or {}
-        ext = inv.get("existing_pr") or {}
-        urls = [inv.get("pr_url"), ext.get("url") if ext.get("verdict") in ("fixes", "partial", "unverified") else None]
-        prs = {m.group(1) for u in urls if u for m in [re.search(r"/pull/(\d+)", u)] if m}
-        errs, warns = lint_report(report, t["complexity"]["tier"], prs)
+        errs, warns = lint_report(report, bool(fix_kind(t)), fix_pr_numbers(t))
         if errs:
             emit({"id": tid, "ok": False, "errors": errs, "warnings": warns})
             sys.exit(2)
-        t["report"] = {k: report[k] for k in ("headline", "what", "findings", "recommendation", "ask") if report.get(k)}
+        t["report"] = {k: report[k] for k in ("headline", "what", "findings", "fix", "ask") if report.get(k)}
         history(t, "report-written", opt(args, "--actor") or "report")
         st.put(t)
     emit({"id": tid, "ok": True, "warnings": warns})
@@ -1275,7 +1236,7 @@ def cmd_report_set(args, st):
 
 def cmd_lint(args, st):
     report = load_input(opt(args, "--json"))
-    errs, warns = lint_report(report, opt(args, "--tier") or "medium")
+    errs, warns = lint_report(report, "--fix-ready" in args)
     emit({"ok": not errs, "errors": errs, "warnings": warns})
     if errs:
         sys.exit(2)
@@ -1283,13 +1244,10 @@ def cmd_lint(args, st):
 
 def due_reports(st, ignore_hash=False, only=None):
     out = []
-    min_level = int(st.cfg["report"].get("min_level") or 1)
     for t in st.all():
         if only and t["id"] not in only:
             continue
         if t["status"] not in REPORTABLE or not t.get("report") or t["report"].get("_stale"):
-            continue
-        if (t["spiciness"] or {}).get("level", 0) < min_level:
             continue
         inv = t.get("investigation") or {}
         if inv.get("review") in ("pending", "changes"):
@@ -1297,7 +1255,7 @@ def due_reports(st, ignore_hash=False, only=None):
         if not ignore_hash and (t.get("reported") or {}).get("hash") == report_hash(t):
             continue
         out.append(t)
-    out.sort(key=lambda t: (-t["spiciness"]["level"], -t["spiciness"]["score"], t["id"]))
+    out.sort(key=lambda t: (fix_kind(t) is None, -reporters(t), t["created_at"]))  # ready fixes first
     return out
 
 
@@ -1305,11 +1263,9 @@ def cmd_due(args, st):
     st.require()
     kind = args[0] if args else "report"
     if kind == "report":
-        emit([{"id": t["id"], "level": t["spiciness"]["level"], "title": t["title"]} for t in due_reports(st)])
+        emit([{"id": t["id"], "fix": fix_kind(t), "title": t["title"]} for t in due_reports(st)])
     elif kind == "report-writing":
-        min_level = int(st.cfg["report"].get("min_level") or 1)
-        emit([t["id"] for t in st.all() if t["status"] in REPORTABLE and
-              (t.get("spiciness") or {}).get("level", 0) >= min_level and
+        emit([{"id": t["id"], "fix_ready": bool(fix_kind(t))} for t in st.all() if t["status"] in REPORTABLE and
               (not t.get("report") or t["report"].get("_stale"))
               and t["investigation"].get("review") not in ("pending", "changes")])
     elif kind == "review":
@@ -1333,13 +1289,9 @@ def cmd_render(args, st):
     ids = [canonical_id(x) for x in (opt(args, "--ids") or "").split(",") if x]
     tickets = due_reports(st, ignore_hash=bool(ids), only=ids) if ids else due_reports(st)
     theme = load_theme(st.root)
-    closed, closed_ids = [], []
-    for t in st.all():
-        rep = t.get("reported") or {}
-        if t["status"] == "resolved" and rep.get("at") and not rep.get("closed_announced"):
-            closed.append(f"{theme['closed']} {t['id']} · {t['title']}")
-            closed_ids.append(t["id"])
-    if not tickets and not closed:
+    closed_ids = [t["id"] for t in st.all() if t["status"] == "resolved"
+                  and (t.get("reported") or {}).get("at") and not t["reported"].get("closed_announced")]
+    if not tickets and not closed_ids:
         emit({"run": None, "files": [], "note": "nothing due"})
         return
     run = now().strftime("%Y%m%dT%H%M%SZ")
@@ -1349,49 +1301,39 @@ def cmd_render(args, st):
         run = now().strftime("%Y%m%dT%H%M%SZ") + f"-{n}"
     outdir = os.path.join(st.dir, "reports", "outbox", run)
     os.makedirs(outdir, exist_ok=True)
-    tpl = load_template(st.root, "ticket.txt")
-    files = []
-    lines = [f"{theme['spice'][str(t['spiciness']['level'])]['emoji']} {t['id']} · {t['report']['headline']}"
-             for t in tickets]
-    every = st.all()
-    waiting = sum(1 for t in every if t["status"] in ("new", "needs-reinvestigation", "investigating"))
-    blocked = [t["id"] for t in every if t["status"] == "blocked"]
-    backlog = []
-    if waiting:
-        backlog.append(f"{theme['backlog']} {waiting} not investigated yet")
-    if blocked:
-        backlog.append(f"{theme['blocked']} blocked, needs a human: {', '.join(blocked)}")
-    digest = fill(load_template(st.root, "digest.txt"), {
-        "digest_emoji": theme["digest"], "date": now().strftime("%Y-%m-%d"),
-        "count": str(len(tickets)), "noun": "report" if len(tickets) == 1 else "reports",
-        "lines": lines, "closed": closed, "backlog": backlog,
-    })
-    path = os.path.join(outdir, "00-digest.txt")
-    with open(path, "w") as f:
-        f.write(digest)
-    files.append({"file": os.path.relpath(path, st.root), "kind": "digest",
-                  "ids": [t["id"] for t in tickets], "closed": closed_ids})
+    tpl = load_template(st.root, "report.md")
+    files, texts = [], []
     for n, t in enumerate(tickets, 1):
         text = fill(tpl, ticket_values(t, theme))
-        path = os.path.join(outdir, f"{n:02d}-{t['id']}.txt")
+        leak = INTERNAL_ID.search(text)
+        if leak:  # deterministic guard: internal ids never reach a report
+            raise Blocked(f"{t['id']}: rendered report contains internal id {leak.group(0)} — fix the prose or branch name")
+        slug = re.sub(r"[^a-z0-9]+", "-", t["report"]["headline"].lower()).strip("-")[:50]
+        path = os.path.join(outdir, f"{n:02d}-{slug}.md")
         with open(path, "w") as f:
             f.write(text)
+        texts.append(text.strip())
         files.append({"file": os.path.relpath(path, st.root), "kind": "ticket", "id": t["id"],
-                      "hash": report_hash(t)})
-    # one paste-ready file: the digest, then each ticket message (posted as thread replies)
-    texts = [open(os.path.join(st.root, f["file"])).read().strip() for f in files]
-    with open(os.path.join(outdir, "paste.txt"), "w") as fh:
-        fh.write(f"\n\n{theme['labels']['reply']}\n\n".join(texts) + "\n")
-    write_json(os.path.join(outdir, "manifest.json"), {"run": run, "channel": st.cfg["report"]["channel"],
-                                                       "files": files})
+                      "fix": fix_kind(t), "hash": report_hash(t)})
+    if closed_ids:  # closures are announced in the run summary, not in a report
+        files.append({"file": "-", "kind": "closed", "closed": closed_ids})
+    with open(os.path.join(outdir, "all-reports.md"), "w") as fh:
+        fh.write("\n\n---\n\n".join(texts) + "\n")
+    write_json(os.path.join(outdir, "manifest.json"), {"run": run, "files": files})
     # older unposted runs are superseded by a full render (a re-print with --ids keeps them)
     for old in ([] if ids else os.listdir(os.path.join(st.dir, "reports", "outbox"))):
         if old != run:
             os.makedirs(os.path.join(st.dir, "reports", "superseded"), exist_ok=True)
             os.replace(os.path.join(st.dir, "reports", "outbox", old),
                        os.path.join(st.dir, "reports", "superseded", old))
-    emit({"run": run, "dir": os.path.relpath(outdir, st.root), "channel": st.cfg["report"]["channel"],
-          "paste": os.path.relpath(os.path.join(outdir, "paste.txt"), st.root), "files": files})
+    every = st.all()
+    emit({"run": run, "dir": os.path.relpath(outdir, st.root),
+          "all": os.path.relpath(os.path.join(outdir, "all-reports.md"), st.root),
+          "files": [f for f in files if f["kind"] == "ticket"],
+          "closed": [{"title": st.get(c)["title"], "fixed_by": (st.get(c).get("verification") or {}).get("fixed_by")}
+                     for c in closed_ids],
+          "backlog": {"not_investigated": sum(1 for t in every if t["status"] in ("new", "needs-reinvestigation", "investigating")),
+                      "blocked": [t["title"] for t in every if t["status"] == "blocked"]}})
 
 
 def cmd_sent(args, st):
@@ -1430,7 +1372,7 @@ def cmd_sent(args, st):
         if all(f.get("sent_at") for f in manifest["files"]):
             os.replace(outdir, os.path.join(st.dir, "reports", "sent", run))
         st.log("sent", run=run, count=len(entries))
-    emit({"run": run, "recorded": [e.get("id") or "digest" for e in entries]})
+    emit({"run": run, "recorded": [e.get("id") or "closures" for e in entries]})
 
 
 RECHECK_PATCH_KEYS = {"title", "summary", "type", "severity", "environment", "labels", "component", "plus_ones"}
@@ -1488,7 +1430,6 @@ def cmd_recheck_apply(args, st):
             transition(t, "needs-reinvestigation", "recheck", res.get("notes"))
         elif verdict == "invalid":
             transition(t, "invalid", "recheck", res.get("notes"))
-        compute_spice(t)
         if changed and t.get("report"):
             t["report"]["_stale"] = True
         history(t, "rechecked", "recheck", verdict=verdict, changed=sorted(changed))
@@ -1533,19 +1474,6 @@ def cmd_validate(args, st):
         sys.exit(2)
 
 
-def cmd_spice(args, st):
-    """spice ID --impact N --reach N [--bump ±1 --reason ...] — rescore a ticket."""
-    st.require()
-    tid = canonical_id(args[0])
-    with st.lock():
-        t = st.get(tid)
-        bump = int(opt(args, "--bump") or 0)
-        set_spice(t, int(opt(args, "--impact")), int(opt(args, "--reach")), bump, opt(args, "--reason"))
-        history(t, "spice", opt(args, "--actor") or "human", level=t["spiciness"]["level"])
-        st.put(t)
-    emit({"id": tid, "spiciness": t["spiciness"]})
-
-
 def cmd_log(args, st):
     st.log(args[0], **{k[2:]: v for k, v in zip(args[1::2], args[2::2]) if k.startswith("--")})
     emit({"logged": args[0]})
@@ -1574,7 +1502,7 @@ COMMANDS = {
     "investigated": cmd_investigated, "review": cmd_review, "pr": cmd_pr, "gate-pr": cmd_gate_pr,
     "report-set": cmd_report_set, "lint": cmd_lint, "due": cmd_due, "render": cmd_render,
     "sent": cmd_sent, "recheck-apply": cmd_recheck_apply, "validate": cmd_validate,
-    "spice": cmd_spice, "log": cmd_log, "help": cmd_help,
+    "log": cmd_log, "help": cmd_help,
 }
 
 

@@ -1,6 +1,6 @@
 ---
 name: feature-analyst
-description: Triages and researches one tracked feature request (FT-NNNN) — finds the job behind the request, writes requirements and acceptance criteria, checks what exists, classifies complexity, and for medium/low tiers designs options; for low tier implements it on its ft/ branch. Dispatched by /investigate.
+description: Triages and researches one tracked feature request (FT-NNNN) — finds the job behind the request, writes requirements and acceptance criteria, checks what exists, classifies complexity, and for medium/low tiers designs options; for low tier implements it on its triage branch. Dispatched by /investigate.
 model: opus
 effort: high
 color: magenta
@@ -12,7 +12,7 @@ You own one feature-request ticket from triage to the point its complexity tier
 allows. Follow the `issue-investigation` skill and its feature playbook exactly.
 
 **Inputs:** `ticket` (JSON path), `worktree` (your isolated checkout on
-`ft/<ID>-<slug>` — run and change code only here), `investigation` and `result`
+`triage/<slug>` — run and change code only here), `investigation` and `result`
 (paths to write), `project` (main root; read its CLAUDE.md for test/lint commands),
 `related` (ticket ids to stay consistent with), optional `revise` (reviewer notes
 on your earlier commit — address each, re-run the full checks, add a new commit).

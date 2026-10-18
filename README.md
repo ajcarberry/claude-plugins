@@ -52,8 +52,8 @@ pushes unasked.
 GitHub issues and Slack channels → a deduplicated, persistent ticket queue (every
 place an issue was raised linked to one ticket) → one subagent per ticket, depth
 gated by complexity (high: findings · medium: options · low: a reviewed draft PR)
-→ a templated Slack report per ticket in ASD-STE100 style with a 🌶️ spiciness
-rating. A stdlib `ft.py` owns the ledger, state machine, lint, and rendering;
+→ a templated, tracker-ready report per ticket (Jira, Linear, GitHub, …) in
+ASD-STE100 style, with a proposed fix when one is ready to merge. A stdlib `ft.py` owns the ledger, state machine, lint, and rendering;
 hooks block hand-edited queue files, unreviewed PRs, and hand-written reports.
 
 ## Global baseline

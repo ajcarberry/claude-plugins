@@ -30,8 +30,8 @@ always optionally with a stated fallback (feedback-triage is fully self-containe
 
 - **feedback-triage** (`plugins/feedback-triage/`) — feedback pipeline: `/intake`
   (GitHub + Slack → deduplicated queue) → `/investigate` (per-ticket subagents,
-  complexity-gated: findings / options / reviewed PR) → `/report` (templated
-  Slack, spiciness); `/recheck` runs out of band on a loop; `/sweep` runs all.
+  complexity-gated: findings / options / reviewed PR) → `/report` (templated,
+  tracker-ready Markdown tickets); `/recheck` runs out of band on a loop; `/sweep` runs all.
   `scripts/ft.py` is the only queue writer; `tests/` unit-tests it, `evals/`
   scores headless runs against a fixture product.
 

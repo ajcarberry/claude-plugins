@@ -40,8 +40,8 @@ and `pull-requests: write` permissions, and the plugin installed for your org.
 
 ## Unattended safety
 
-- Reports are never sent: unattended runs leave `reports/outbox/<run>/paste.txt`
-  unrecorded; after pasting, run `ft.py sent <run> --all`.
+- Reports are never sent: unattended runs leave `reports/outbox/<run>/*.md`
+  unrecorded; after pasting them into the tracker, run `ft.py sent <run> --all`.
 - PRs from unattended runs are drafts when `investigate.draft_prs: true` (default).
 - The hooks still apply: no PR without an approved review, no hand-edited queue.
 - Run one writer at a time per queue: two runners saving conflicting queue changes

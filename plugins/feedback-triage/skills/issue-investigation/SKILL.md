@@ -1,6 +1,6 @@
 ---
 name: issue-investigation
-description: Use when triaging or researching a tracked feedback ticket (FT-NNNN) — reproducing a reported bug, analysing a feature request's requirements, checking an existing fix PR, classifying complexity (low/medium/high), proposing fix or implementation options, or implementing a low-complexity fix on an ft/ branch.
+description: Use when triaging or researching a tracked feedback ticket (FT-NNNN) — reproducing a reported bug, analysing a feature request's requirements, checking an existing fix PR, classifying complexity (low/medium/high), proposing fix or implementation options, or implementing a low-complexity fix on a triage branch.
 ---
 
 # Issue Investigation — Triage, Then Go Exactly as Far as the Tier Allows
@@ -33,8 +33,7 @@ the project needs setup (deps, codegen) and none ran, do it in the worktree firs
 4. Wrong type? A "feature" for documented behaviour that is broken is a bug; a
    "bug" that works as designed is a feature. Correct it via `type`.
 5. Classify per [complexity.md](../../references/complexity.md) (first matching
-   rule wins) and score impact/reach per
-   [spiciness.md](../../references/spiciness.md).
+   rule wins).
 6. **Related tickets** (given in your prompt): read their investigation files if
    they exist. Your recommendation must not contradict theirs — if the right
    answer conflicts, say so in `concerns` and name the ticket.
@@ -53,7 +52,7 @@ recommend one in one sentence.
 
 Bug: the repro becomes a failing test first; watch it fail; fix the cause; watch
 it pass; run the full suite. Feature: a test per acceptance criterion, then the
-smallest implementation. Commit on the branch naming the ticket. **Never push or
+smallest implementation. Commit on the branch referencing the upstream issue ("Fixes #431"), never the internal FT id. **Never push or
 open a PR** — the orchestrator does that after independent review. Outgrowing the
 low rules mid-way → re-classify medium and keep the attempt as an option.
 
@@ -70,7 +69,6 @@ recommendation. "Not reproduced after X, Y, Z" is a finding.
 ```json
 {"id": "FT-0007", "status": "DONE",
  "complexity": {"tier": "low|medium|high", "rationale": "<one sentence naming the deciding rule>"},
- "impact": 0, "reach": 0, "bump": 0, "bump_reason": null,
  "repro": "reproduced|partial|not-reproduced|not-attempted|n/a",
  "root_cause": "<one sentence or null>", "options_count": 2,
  "existing_pr": {"url": "…", "verdict": "fixes|partial|wrong|unverified"},

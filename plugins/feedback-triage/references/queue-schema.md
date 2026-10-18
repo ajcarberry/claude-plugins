@@ -8,7 +8,7 @@
 ├── queue/FT-0001.json         # one ticket per file
 ├── investigations/FT-0001.md  # phase-2 findings
 ├── runs/<run>/                # per-run scratch: candidates, verdicts, results (not persisted)
-├── reports/outbox/<run>/      # rendered messages + paste.txt + manifest.json
+├── reports/outbox/<run>/      # one NN-<slug>.md per report + all-reports.md + manifest.json
 ├── reports/sent/<run>/        # runs recorded as posted
 └── log.jsonl                  # append-only event log
 <project>/.ft-worktrees/<id>/  # ticket worktrees (git-excluded)
@@ -24,9 +24,9 @@
  "sources": {"github": [{"repo": "owner/name", "export": "<optional JSON export path>"}],
              "slack": [{"id": "C0123", "channel": "product-feedback", "export": "<optional>"}]},
  "intake": {"lookback_days": 14, "overlap_hours": 24},
- "investigate": {"max_parallel": 4, "max_per_run": 8, "base_branch": "main", "branch_prefix": "ft/",
+ "investigate": {"max_parallel": 4, "max_per_run": 8, "base_branch": "main", "branch_prefix": "triage/",
                  "open_prs": true, "draft_prs": true, "setup": "<command run in each new worktree>"},
- "report": {"channel": "#eng-triage", "min_level": 1},
+ "report": {"tracker": "Jira"},
  "recheck": {"max_per_run": 20, "min_age_hours": 12}}
 ```
 
@@ -50,7 +50,6 @@
 | `sources[]` | intake | `ref, url, author, raised_at, excerpt (≤ 400), relation (original\|duplicate\|mention), plus_ones, state, linked_prs, channel_name` |
 | `labels`, `component`, `severity`, `environment` | intake, recheck | |
 | `complexity` | investigate | `{tier, rationale}` — [complexity.md](complexity.md) |
-| `spiciness` | ft.py from investigator factors | `{factors{impact, reach, momentum, readiness}, bump, score, level}` — [spiciness.md](spiciness.md) |
 | `investigation` | investigate | `file, repro, root_cause, existing_pr{url, verdict}, branch, review, pr_url, attempts` |
 | `verification` | recheck | `last_checked_at, verdict, notes, evidence[], fixed_by` |
 | `report`, `reported` | report | prose fields (linted); `at, hash, count` |

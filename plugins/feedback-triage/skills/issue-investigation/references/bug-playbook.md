@@ -41,7 +41,7 @@ Trace back from the failure to the first wrong value or decision. State it as
 
 - **Root cause** — why it fails.
 - **Trigger** — what the user did to hit it.
-- **Blast radius** — who else hits it (this sets `reach`).
+- **Blast radius** — who else hits it.
 
 Not reproduced but the code plainly shows the defect? Say "explained from code,
 not reproduced" — that can still support medium.

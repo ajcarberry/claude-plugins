@@ -35,7 +35,6 @@ investigated: <YYYY-MM-DD>
 ## Complexity
 
 **<tier>** — <one sentence naming the deciding rule from complexity.md>.
-**Impact <0–3>** — <evidence>. **Reach <0–3>** — <evidence>.
 
 <!-- medium and low only below this line -->
 
@@ -55,7 +54,7 @@ investigated: <YYYY-MM-DD>
 
 ## Change
 
-- **Branch:** `ft/<FT-NNNN>-<slug>` · **Commit:** <sha>
+- **Branch:** `triage/<slug>` · **Commit:** <sha>
 - **Tests per acceptance criterion:** <test names> → <result>
 - **Full suite:** <command> → <result>
 - **Diff summary:** <files, ±lines>

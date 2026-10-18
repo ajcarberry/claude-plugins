@@ -1,6 +1,6 @@
 ---
 name: change-reviewer
-description: Independent fresh-context review of a low-complexity feedback-triage change on an ft/ branch before it is pushed or opened as a PR. Dispatched by /investigate after an investigator commits a low-tier change.
+description: Independent fresh-context review of a low-complexity feedback-triage change on a triage branch before it is pushed or opened as a PR. Dispatched by /investigate after an investigator commits a low-tier change.
 model: opus
 effort: high
 color: green

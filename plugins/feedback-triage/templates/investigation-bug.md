@@ -35,7 +35,6 @@ Cite: `git log` lines, URLs, file:line.>
 ## Complexity
 
 **<tier>** — <one sentence naming the deciding rule from complexity.md>.
-**Impact <0–3>** — <evidence>. **Reach <0–3>** — <evidence>.
 
 <!-- medium and low only below this line -->
 
@@ -60,7 +59,7 @@ Cite: `git log` lines, URLs, file:line.>
 
 ## Change
 
-- **Branch:** `ft/<FT-NNNN>-<slug>` · **Commit:** <sha>
+- **Branch:** `triage/<slug>` · **Commit:** <sha>
 - **Failing test first:** `<test name>` — failed with: <output line>
 - **After fix:** <test command> → <result>; full suite: <command> → <result>
 - **Diff summary:** <files, ±lines>

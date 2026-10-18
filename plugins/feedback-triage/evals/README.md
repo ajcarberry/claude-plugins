@@ -82,7 +82,7 @@ fact-checker re-runs every claim in the reports against the real code and PRs.
 | Wrong PR attributions | 2 hidden | 3 | 2 (+1 missed) | 0 |
 | Tickets dropped from the report | 0 | 0 | 1 (capacity, unannounced) | 0 |
 | Reviewer: high-severity defects found | — | 7 | 3 | 1 |
-| Static instruction tokens (all actors) | 24.3k | 13.4k | 13.5k | 13.8k |
+| Static instruction tokens (all actors) | 24.3k | 13.4k | 13.5k | 13.8k (12.8k after spiciness was removed) |
 | Cost: intake / investigate / report (real) | $0.95 / $10.71 / $1.19 | $0.80 / $9.23 / $1.62 | $0.71 / $9.37 / $1.39 | $0.73 / $9.16 / $1.38 |
 
 What moved the numbers: `duplicate_of` by the original's URL instead of a
@@ -98,3 +98,12 @@ plugin README, "Known limits").
 
 Not covered: live Slack/GitHub APIs (sandbox blocks unattached repos' API; the
 reader's REST path is untested live), opening real PRs (`--no-pr`).
+
+### Report format change (after round 2)
+
+Spiciness was removed (not a value-add), the Slack digest replaced by one
+standalone Markdown report per issue for the team's tracker, the "Do" section
+replaced by an optional "Proposed fix" that exists only when a fix is ready to
+merge, and internal ids blocked by lint and by the renderer. Re-running the report
+phase on the iteration-3 real-world queue: 9 reports, 5 fix-ready, 0 lint errors,
+0 shape problems, 0 internal ids, $1.84.

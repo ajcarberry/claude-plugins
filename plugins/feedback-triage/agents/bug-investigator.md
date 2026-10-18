@@ -1,6 +1,6 @@
 ---
 name: bug-investigator
-description: Triages and researches one tracked bug report (FT-NNNN) — reconstructs the incident, attempts a reproduction, classifies complexity, and for medium/low tiers finds the root cause and options; for low tier implements the fix on its ft/ branch. Dispatched by /investigate.
+description: Triages and researches one tracked bug report (FT-NNNN) — reconstructs the incident, attempts a reproduction, classifies complexity, and for medium/low tiers finds the root cause and options; for low tier implements the fix on its triage branch. Dispatched by /investigate.
 model: opus
 effort: high
 color: red
@@ -13,7 +13,7 @@ the `issue-investigation` skill and its bug playbook exactly; the tier gates are
 not suggestions.
 
 **Inputs:** `ticket` (JSON path), `worktree` (your isolated checkout on
-`ft/<ID>-<slug>` — run and change code only here), `investigation` and `result`
+`triage/<slug>` — run and change code only here), `investigation` and `result`
 (paths to write), `project` (main root; read its CLAUDE.md for test/lint commands),
 `related` (ticket ids to stay consistent with), optional `revise` (reviewer notes
 on your earlier commit — address each, re-run the full checks, add a new commit).

@@ -7,7 +7,7 @@ Nobody re-litigates it downstream.
 | Tier | Investigator stops after |
 |---|---|
 | **high** | triage + research: what is known, what is not, why it is high |
-| **medium** | + root cause (bug) or design (feature), **≥ 2 options**, one recommendation |
+| **medium** | + root cause (bug) or design (feature), **≥ 2 options** with a preferred one |
 | **low** | + branch, implementation, tests → independent review → change request |
 
 A fix PR already in flight that works (`existing_pr` verdict `fixes`) replaces

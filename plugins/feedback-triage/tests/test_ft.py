@@ -51,8 +51,8 @@ GOOD_REPORT = {
     "what": "Users who stay idle for one hour cannot log in again. They see a server error.",
     "findings": ["The token refresh code does not handle an expired refresh token.",
                  "We reproduced it on version 2.4.1 with a failing test."],
-    "recommendation": "Catch the expired token and send the user to the SSO login page.",
 }
+FIX = "Catch the expired token and send the user to the SSO login page. Check that the new test covers an empty token."
 
 
 class Intake(unittest.TestCase):
@@ -203,7 +203,7 @@ class Lifecycle(unittest.TestCase):
     def investigate(self, tier="medium", **extra):
         self.assertEqual(self.e.j("claim")["claimed"][0]["id"], self.id)
         res = {"id": self.id, "status": "DONE", "complexity": {"tier": tier, "rationale": "one module"},
-               "impact": 2, "reach": 2, "repro": "reproduced", "investigation_file": self.inv,
+               "repro": "reproduced", "investigation_file": self.inv,
                "options_count": 2, **extra}
         return self.e.j("investigated", "--json", json.dumps(res))
 
@@ -213,59 +213,75 @@ class Lifecycle(unittest.TestCase):
 
     def test_medium_needs_options(self):
         self.e.j("claim")
-        res = {"id": self.id, "complexity": {"tier": "medium", "rationale": "r"}, "impact": 1, "reach": 1,
-               "repro": "reproduced", "investigation_file": self.inv, "options_count": 1}
+        res = {"id": self.id, "complexity": {"tier": "medium", "rationale": "r"}, "repro": "reproduced", "investigation_file": self.inv, "options_count": 1}
         self.assertEqual(self.e.run("investigated", "--json", json.dumps(res), ok=False).returncode, 1)
 
-    def test_full_medium_flow_and_report(self):
-        r = self.investigate()
-        self.assertEqual(r["spice"], 2)  # 2*2 + 2 + 0 + 0 = 6
+    def render_one(self, *args):
+        out = self.e.j("render", *args)
+        f = next(f for f in out["files"] if f["kind"] == "ticket")
+        return out, open(os.path.join(self.e.dir, f["file"])).read()
+
+    def test_researched_report_shape(self):
+        self.investigate()
         bad = dict(GOOD_REPORT, what="We basically just leverage the token. It is very robust 🔥.")
         self.assertEqual(self.e.run("report-set", self.id, "--json", json.dumps(bad), ok=False).returncode, 2)
+        # a researched report has no fix section; a fix field is refused
+        self.assertEqual(self.e.run("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, fix=FIX)),
+                                    ok=False).returncode, 2)
         self.e.j("report-set", self.id, "--json", json.dumps(GOOD_REPORT))
-        out = self.e.j("render")
-        ticket = next(f for f in out["files"] if f["kind"] == "ticket")
-        text = open(os.path.join(self.e.dir, ticket["file"])).read()
-        self.assertIn("🌶️🌶️ *FT-0001 · Login returns 500", text)
-        self.assertIn("🧭 Options ready", text)
-        self.assertIn("✅ Repro'd", text)
-        self.assertIn("*Do:* Catch the expired token", text)
-        self.assertNotIn("{{", text)
-        self.assertNotIn("Ask:", text)  # empty optional line dropped
-        for f in out["files"]:
-            self.e.j("sent", out["run"], "--file", f["file"], "--permalink", "https://slack/x")
+        out, text = self.render_one()
+        self.assertTrue(text.startswith("# Login returns 500 after the SSO session expires\n"))
+        self.assertIn("👋 Hi team!", text)
+        self.assertIn("**Status:** Researched: fix approaches outlined, needs a decision", text)
+        self.assertIn("**Reproduced:** Yes", text)
+        self.assertIn("## What we found\n\n- The token refresh code", text)
+        self.assertIn("## Sources\n\n- GitHub acme/app#12 (dana): https://github.com/acme/app/issues/12", text)
+        for gone in ("## Proposed fix", "## Open question", "Do:", "🌶", "FT-0", "{{"):
+            self.assertNotIn(gone, text)
+        self.assertNotIn("\n\n\n", text)
+        self.e.j("sent", out["run"], "--all")
         self.assertEqual(self.e.j("get", self.id)["status"], "reported")
         self.assertEqual(self.e.j("due", "report"), [])  # unchanged → not re-reported
 
-    def test_low_tier_gate(self):
-        self.investigate(tier="low", branch="ft/FT-0001-sso-refresh")
+    def test_internal_ids_never_reach_a_report(self):
+        self.investigate()
+        leaky = dict(GOOD_REPORT, findings=["It is the same root cause as FT-0003."])
+        p = self.e.run("report-set", self.id, "--json", json.dumps(leaky), ok=False)
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("internal ticket id", p.stdout)
+
+    def test_low_tier_gate_and_fix_ready_report(self):
+        self.investigate(tier="low", branch="triage/sso-refresh")
         hook = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
-                "tool_input": {"command": "gh pr create --head ft/FT-0001-sso-refresh --title x"}}
+                "tool_input": {"command": "gh pr create --head triage/sso-refresh --title x"}}
         self.assertEqual(self.e.hook(hook).returncode, 2)  # review pending
         self.assertEqual(self.e.run("pr", self.id, "--url", "https://x", ok=False).returncode, 2)
         self.e.j("review", self.id, "--verdict", "approved", "--notes", "tests cover it")
         self.assertEqual(self.e.hook(hook).returncode, 0)
-        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, recommendation="Review the branch.")))
-        text = open(os.path.join(self.e.dir, next(f["file"] for f in self.e.j("render")["files"] if f["kind"] == "ticket"))).read()
-        self.assertIn("🌿 Fix on branch", text)
-        self.assertIn("`ft/FT-0001-sso-refresh`", text)
-        self.assertFalse(any(l != l.rstrip() for l in text.splitlines()))
+        self.assertEqual(self.e.j("due", "report-writing"), [{"id": self.id, "fix_ready": True}])
+        # a fix-ready report must carry the fix
+        self.assertEqual(self.e.run("report-set", self.id, "--json", json.dumps(GOOD_REPORT), ok=False).returncode, 2)
+        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, fix=FIX)))
+        _, text = self.render_one()
+        self.assertIn("Fix ready on branch `triage/sso-refresh`", text)
+        self.assertIn("## Proposed fix\n\nCatch the expired token", text)
+        self.assertIn("we're confident is ready to merge", text)
         self.e.j("pr", self.id, "--url", "https://github.com/acme/app/pull/7")
-        text = open(os.path.join(self.e.dir, next(f["file"] for f in self.e.j("render")["files"] if f["kind"] == "ticket"))).read()
-        self.assertIn("🔧 PR ready", text)
-        self.assertIn("👉 Review the PR: https://github.com/acme/app/pull/7", text)
-        self.assertNotIn("<http", text)  # paste-ready: no API-only <url|label> markup
-        self.assertEqual(self.e.j("get", self.id)["spiciness"]["factors"]["readiness"], 1)
+        _, text = self.render_one("--ids", self.id)
+        self.assertIn("**Status:** Fix ready: PR open, independently reviewed", text)
+        self.assertIn("Review it here: https://github.com/acme/app/pull/7", text)
+        self.assertNotIn("<http", text)
         mcp = {"hook_event_name": "PreToolUse", "tool_name": "mcp__github__create_pull_request",
-               "tool_input": {"head": "ft/FT-0001-sso-refresh"}}
+               "tool_input": {"head": "triage/sso-refresh"}}
         self.assertEqual(self.e.hook(mcp).returncode, 0)
 
     def test_push_from_worktree_is_gated(self):
         self.investigate()  # medium tier
         wt = os.path.join(self.e.dir, "wt")
-        subprocess.run(["git", "init", "-q", "-b", "ft/FT-0001-try", wt], check=True)
+        subprocess.run(["git", "init", "-q", "-b", "triage/try", wt], check=True)
         for cmd in (f"git -C {wt} push -u origin HEAD", f"cd {wt} && git push",
-                    "gh pr create --head \"ft/FT-0001-try\"", "git push origin HEAD:refs/heads/ft/FT-0001-try"):
+                    "gh pr create --head \"triage/try\"", "git push origin HEAD:refs/heads/triage/try",
+                    "git push origin +triage/try"):
             p = self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": cmd}})
             self.assertEqual(p.returncode, 2, cmd)
         p = self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash",
@@ -273,12 +289,14 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(p.returncode, 0)
 
     def test_medium_branch_cannot_pr(self):
-        self.investigate()
+        self.investigate(tier="low", branch="triage/try")
+        self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "needs-reinvestigation", "evidence": ["x"]}))
+        self.investigate()  # now medium: the branch is no longer the ticket's change
         hook = {"hook_event_name": "PreToolUse", "tool_name": "mcp__github__create_pull_request",
-                "tool_input": {"head": "ft/FT-0001-try"}}
+                "tool_input": {"head": "triage/try"}}
         p = self.e.hook(hook)
         self.assertEqual(p.returncode, 2)
-        self.assertIn("only low-complexity", p.stderr)
+        self.assertIn("no ticket has finished", p.stderr)
 
     def test_recheck_only_existing_and_allowed_keys(self):
         self.investigate()
@@ -300,28 +318,45 @@ class Lifecycle(unittest.TestCase):
         self.e.j("upsert", "--json", cand(77, duplicate_of=self.id, author="new"))
         self.assertEqual(self.e.j("get", self.id)["status"], "needs-reinvestigation")
 
-    def test_existing_pr_defers_and_renders(self):
+    def test_existing_pr_makes_a_fix_ready_report(self):
         self.e.j("claim")
-        res = {"id": self.id, "complexity": {"tier": "low", "rationale": "one line"}, "impact": 2, "reach": 2,
+        res = {"id": self.id, "complexity": {"tier": "low", "rationale": "one line"},
                "repro": "reproduced", "investigation_file": self.inv,
                "existing_pr": {"url": "https://github.com/acme/app/pull/9", "verdict": "fixes",
                                "unlinked_reason": "test"}}
         self.assertEqual(self.e.j("investigated", "--json", json.dumps(res))["next"], "report")
-        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, recommendation="Review and merge PR #9.")))
-        out = self.e.j("render")
-        text = open(os.path.join(self.e.dir, next(f["file"] for f in out["files"] if f["kind"] == "ticket"))).read()
-        self.assertIn("🔗 PR exists", text)
-        self.assertIn("https://github.com/acme/app/pull/9", text)
-        paste = open(os.path.join(self.e.dir, out["paste"])).read()
-        self.assertIn("reply in thread", paste)
+        bad = dict(GOOD_REPORT, fix="PR #78 fixes it. Merge it.")
+        self.assertEqual(self.e.run("report-set", self.id, "--json", json.dumps(bad), ok=False).returncode, 2)
+        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, fix="PR #9 fixes every reported case. Check the empty-token test.")))
+        out, text = self.render_one()
+        self.assertIn("**Status:** Fix ready: an open upstream PR fixes it (we tested it)", text)
+        self.assertIn("Review it here: https://github.com/acme/app/pull/9", text)
+        allr = open(os.path.join(self.e.dir, out["all"])).read()
+        self.assertIn("# Login returns 500", allr)
         self.e.j("sent", out["run"], "--all")
         self.assertEqual(self.e.j("get", self.id)["status"], "reported")
+
+    def test_partial_pr_is_a_researched_report_listing_the_pr(self):
+        self.e.j("claim")
+        src = {"type": "bug", "title": "x", "summary": "y"}
+        res = {"id": self.id, "complexity": {"tier": "medium", "rationale": "r"},
+               "repro": "reproduced", "investigation_file": self.inv, "options_count": 2,
+               "existing_pr": {"url": "https://github.com/acme/app/pull/77", "verdict": "partial"}}
+        p = self.e.run("investigated", "--json", json.dumps(res), ok=False)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("not linked", p.stderr)
+        res["existing_pr"]["unlinked_reason"] = "same diff, author forgot to link"
+        self.e.j("investigated", "--json", json.dumps(res))
+        self.assertEqual(self.e.run("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, fix=FIX)),
+                                    ok=False).returncode, 2)  # partial is not fix-ready
+        self.e.j("report-set", self.id, "--json", json.dumps(GOOD_REPORT))
+        _, text = self.render_one()
+        self.assertNotIn("## Proposed fix", text)
 
     def test_backslash_in_finding_renders(self):
         self.investigate()
         self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, findings=[r"It fails on `C:\Users\dana` paths."])))
-        out = self.e.j("render")
-        text = open(os.path.join(self.e.dir, next(f["file"] for f in out["files"] if f["kind"] == "ticket"))).read()
+        _, text = self.render_one()
         self.assertIn("C:\\Users", text)
 
     def test_sent_survives_status_change_after_render(self):
@@ -338,38 +373,20 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(self.e.j("get", self.id)["reported"]["count"], 1)
 
     def test_downgrade_returns_for_options_and_forbids_low(self):
-        self.investigate(tier="low", branch="ft/FT-0001-x")
+        self.investigate(tier="low", branch="triage/x")
         self.e.j("review", self.id, "--verdict", "changes", "--notes", "misses edge case", "--downgrade")
         t = self.e.j("get", self.id)
-        self.assertEqual((t["status"], t["investigation"]["prior_attempt"]), ("needs-reinvestigation", "ft/FT-0001-x"))
+        self.assertEqual((t["status"], t["investigation"]["prior_attempt"]), ("needs-reinvestigation", "triage/x"))
         self.e.j("claim")
-        res = {"id": self.id, "complexity": {"tier": "low", "rationale": "r"}, "impact": 1, "reach": 1,
-               "repro": "reproduced", "investigation_file": self.inv, "branch": "ft/FT-0001-y"}
+        res = {"id": self.id, "complexity": {"tier": "low", "rationale": "r"},
+               "repro": "reproduced", "investigation_file": self.inv, "branch": "triage/y"}
         self.assertEqual(self.e.run("investigated", "--json", json.dumps(res), ok=False).returncode, 1)
         res.update(complexity={"tier": "medium", "rationale": "r"}, options_count=2)
         res.pop("branch")
         self.e.j("investigated", "--json", json.dumps(res))
 
-    def test_existing_pr_must_be_linked_and_match_recommendation(self):
-        self.e.j("claim")
-        res = {"id": self.id, "complexity": {"tier": "medium", "rationale": "r"}, "impact": 1, "reach": 1,
-               "repro": "reproduced", "investigation_file": self.inv, "options_count": 2,
-               "existing_pr": {"url": "https://github.com/acme/app/pull/77", "verdict": "partial"}}
-        p = self.e.run("investigated", "--json", json.dumps(res), ok=False)
-        self.assertEqual(p.returncode, 1)
-        self.assertIn("not linked", p.stderr)
-        res["existing_pr"]["unlinked_reason"] = "same diff, author forgot to link"
-        self.e.j("investigated", "--json", json.dumps(res))
-        bad = dict(GOOD_REPORT, recommendation="Review and merge PR #78.")
-        self.assertEqual(self.e.run("report-set", self.id, "--json", json.dumps(bad), ok=False).returncode, 2)
-        vague = dict(GOOD_REPORT, recommendation="Pick option A and merge PR #77.")
-        self.assertEqual(self.e.run("report-set", self.id, "--json", json.dumps(vague), ok=False).returncode, 2)
-        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, recommendation="Review PR #77 and add the empty-list test.")))
-        text = open(os.path.join(self.e.dir, next(f["file"] for f in self.e.j("render")["files"] if f["kind"] == "ticket"))).read()
-        self.assertIn("🔗 PR exists (partial fix)", text)
-
     def test_reinvestigated_as_medium_drops_stale_pr(self):
-        self.investigate(tier="low", branch="ft/FT-0001-x")
+        self.investigate(tier="low", branch="triage/x")
         self.e.j("review", self.id, "--verdict", "approved", "--notes", "ok")
         self.e.j("pr", self.id, "--url", "https://github.com/acme/app/pull/99")
         self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "needs-reinvestigation", "evidence": ["x"]}))
@@ -380,16 +397,10 @@ class Lifecycle(unittest.TestCase):
 
     def test_low_with_partial_pr_still_needs_our_change(self):
         self.e.j("claim")
-        res = {"id": self.id, "complexity": {"tier": "low", "rationale": "r"}, "impact": 1, "reach": 1,
+        res = {"id": self.id, "complexity": {"tier": "low", "rationale": "r"},
                "repro": "reproduced", "investigation_file": self.inv,
                "existing_pr": {"url": "https://github.com/acme/app/pull/9", "verdict": "partial", "unlinked_reason": "t"}}
         self.assertEqual(self.e.run("investigated", "--json", json.dumps(res), ok=False).returncode, 1)
-
-    def test_lint_pr_must_be_linked_and_option_case(self):
-        self.investigate()
-        self.assertEqual(self.e.run("report-set", self.id, "--json",
-                                    json.dumps(dict(GOOD_REPORT, recommendation="Merge PR #45 now.")), ok=False).returncode, 2)
-        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, recommendation="Pick the option a user sees first.")))
 
     def test_reprint_keeps_unposted_run_and_filters(self):
         self.investigate()
@@ -408,18 +419,18 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(r["status"], "resolved")
         self.assertEqual(self.e.j("due", "report-writing"), [])
 
-    def test_digest_names_backlog(self):
+    def test_render_reports_backlog_outside_the_reports(self):
         self.investigate()
         self.e.j("upsert", "--json", cand(60, title="Not looked at yet", author="z"))
         self.e.j("report-set", self.id, "--json", json.dumps(GOOD_REPORT))
-        out = self.e.j("render")
-        digest = open(os.path.join(self.e.dir, out["files"][0]["file"])).read()
-        self.assertIn("⏳ 1 not investigated yet", digest)
+        out, text = self.render_one()
+        self.assertEqual(out["backlog"]["not_investigated"], 1)
+        self.assertNotIn("not investigated", text)
 
     def test_existing_fix_forbids_duplicate_branch(self):
         self.e.j("claim")
-        res = {"id": self.id, "complexity": {"tier": "low", "rationale": "r"}, "impact": 1, "reach": 1,
-               "repro": "reproduced", "investigation_file": self.inv, "branch": "ft/FT-0001-dup",
+        res = {"id": self.id, "complexity": {"tier": "low", "rationale": "r"},
+               "repro": "reproduced", "investigation_file": self.inv, "branch": "triage/dup",
                "existing_pr": {"url": "https://github.com/acme/app/pull/9", "verdict": "fixes",
                                "unlinked_reason": "test"}}
         p = self.e.run("investigated", "--json", json.dumps(res), ok=False)
@@ -445,15 +456,13 @@ class Lifecycle(unittest.TestCase):
         self.investigate()
         self.e.j("report-set", self.id, "--json", json.dumps(GOOD_REPORT))
         out = self.e.j("render")
-        for f in out["files"]:
-            self.e.j("sent", out["run"], "--file", f["file"])
+        self.e.j("sent", out["run"], "--all")
         self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "resolved",
                                                         "evidence": ["closed by PR #40"]}))
         out = self.e.j("render")
-        self.assertEqual([f["kind"] for f in out["files"]], ["digest"])
-        digest = open(os.path.join(self.e.dir, out["files"][0]["file"])).read()
-        self.assertIn("✅ FT-0001", digest)
-        self.e.j("sent", out["run"], "--file", out["files"][0]["file"])
+        self.assertEqual(out["files"], [])
+        self.assertEqual(out["closed"][0]["title"], "Login fails after SSO timeout")
+        self.e.j("sent", out["run"], "--all")
         self.assertIsNone(self.e.j("render")["run"])
 
     def test_reinvestigation_marks_report_stale(self):
@@ -463,15 +472,15 @@ class Lifecycle(unittest.TestCase):
                                                         "evidence": ["new repro on 2.5"]}))
         self.investigate()
         self.assertEqual(self.e.j("due", "report"), [])
-        self.assertEqual(self.e.j("due", "report-writing"), [self.id])
+        self.assertEqual(self.e.j("due", "report-writing"), [{"id": self.id, "fix_ready": False}])
 
-    def test_momentum_from_reporters(self):
+    def test_reporter_count_in_report(self):
         self.investigate()
         for n, who in ((20, "a"), (21, "b"), (22, "c")):
             self.e.j("upsert", "--json", cand(n, duplicate_of=self.id, author=who))
-        t = self.e.j("get", self.id)
-        self.assertEqual(t["spiciness"]["factors"]["momentum"], 2)  # 4 distinct reporters
-        self.assertEqual(t["spiciness"]["level"], 3)
+        self.e.j("report-set", self.id, "--json", json.dumps(GOOD_REPORT))
+        _, text = self.render_one()
+        self.assertIn("**Reported by:** 4 people", text)
 
 
 class Persistence(unittest.TestCase):

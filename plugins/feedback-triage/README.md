@@ -3,8 +3,9 @@
 Feedback in, engineering-ready reports out. The plugin finds bug reports and
 feature requests in GitHub issues and Slack, tracks each one **once** in a
 persistent queue, researches each with a dedicated subagent, and produces a
-templated, spiciness-rated Slack report ready to paste. The aim: the engineering team reads the
-report, not the raw issues, and low-complexity fixes arrive as reviewed PRs.
+standalone, tracker-ready report per issue (Markdown for Jira, Linear, GitHub, …).
+The aim: the engineering team reads the report, not the raw issues, and fixes that
+are ready to merge arrive with the report.
 
 Self-contained: it depends on no other plugin.
 
@@ -14,23 +15,23 @@ Self-contained: it depends on no other plugin.
            ┌──────────── /recheck (loop: /loop, Routine, CI) ─────────────┐
            ▼                                                              │
 GitHub ─┐                                                                 │
-        ├─▶ /intake ─▶ queue ─▶ /investigate ─▶ /report ─▶ Slack #eng      │
-Slack ──┘   dedup +     FT-NNNN   per ticket:     digest + one             │
-            link all     .json    high → findings  templated message ──────┘
-            sources               medium → options  per ticket, 🌶️–🌶️🌶️🌶️🌶️
-                                  low → reviewed PR
+        ├─▶ /intake ─▶ queue ─▶ /investigate ─▶ /report ─▶ your tracker   │
+Slack ──┘   dedup +    (internal  per ticket:      one Markdown             │
+            link all    ids)      high → findings  report per issue ───────┘
+            sources               medium → options (+ proposed fix when
+                                  low → reviewed fix  one is ready to merge)
 /sweep = recheck → intake → investigate → report        /queue = read-only view
 ```
 
 | Command | Phase | Does |
 |---|---|---|
-| `/feedback-triage:setup` | — | sources, report channel, persistence, tool check |
+| `/feedback-triage:setup` | — | sources, target tracker, persistence, tool check |
 | `/feedback-triage:intake` | 1 | read sources since each watermark; track every bug/feature once; link every place it was raised; record non-feedback as ignored |
 | `/feedback-triage:recheck` | loop | fact-check **only tracked** tickets: still open? fixed upstream? new info? corrected fields? Never asks, never creates |
 | `/feedback-triage:investigate` | 2 | one `bug-investigator` / `feature-analyst` per ticket; complexity-gated depth; an existing fix PR is tested and recommended instead of duplicated; low tier → `change-reviewer` → draft PR |
-| `/feedback-triage:report` | 3 | `report-writer` prose → `ft.py lint` → `ft.py render` → paste-ready Slack text (digest + thread replies) |
+| `/feedback-triage:report` | 3 | `report-writer` prose → `ft.py lint` → `ft.py render` → one paste-ready Markdown ticket per issue |
 | `/feedback-triage:sweep` | all | the full loop, no questions asked |
-| `/feedback-triage:queue` | — | counts, spiciest, most-raised, one ticket in full |
+| `/feedback-triage:queue` | — | counts, ready fixes, most-raised, one ticket in full |
 
 ## Design
 
@@ -40,12 +41,13 @@ Slack ──┘   dedup +     FT-NNNN   per ticket:     digest + one            
   the dedup ledger (one source ref → one ticket; cross-links attach; judged
   duplicates attach; non-feedback is recorded, never dropped), monotonic
   per-source watermarks, the status state machine, the tier contracts (medium
-  needs ≥ 2 options, low needs a branch and an approved review), the spiciness
-  formula, the Slack prose lint, and the template renderer.
+  needs ≥ 2 options, low needs a branch and an approved review), the report
+  prose lint, and the template renderer — which refuses to output any internal
+  queue id.
 - **Skills** hold judgment: what counts as feedback and what counts as a duplicate
   (`feedback-intake`), how to triage/repro/research/implement (`issue-investigation`
   + bug and feature playbooks), what a recheck may change (`ticket-verification`),
-  how to write a report (`slack-reporting`), queue discipline (`ticket-queue`).
+  how to write a report (`issue-reporting`), queue discipline (`ticket-queue`).
 - **Agents** are tiered: sonnet reads sources (`source-reader`), verifies
   (`ticket-verifier`), and writes prose (`report-writer`); opus investigates
   (`bug-investigator`, `feature-analyst`) and reviews (`change-reviewer`).
@@ -53,33 +55,62 @@ Slack ──┘   dedup +     FT-NNNN   per ticket:     digest + one            
   queue — the orchestrator applies their result files through `ft.py`. Each actor
   loads only what it acts on (≈ 0.5–4k tokens of instructions).
 - **Hooks** (`scripts/hook.py`, PreToolUse, deterministic file checks):
-  no direct edits to queue files; no push/PR of an `ft/FT-NNNN-*` branch unless the
-  ticket is low tier with an approved independent review. Escape hatch:
+  no direct edits to queue files; no push/PR of a triage branch (`triage/*`) unless
+  its ticket is low tier with an approved independent review. Escape hatch:
   `FT_SKIP_GATE=1`.
 
 References: [queue-schema](references/queue-schema.md) ·
-[complexity](references/complexity.md) · [spiciness](references/spiciness.md) ·
-[scheduling](references/scheduling.md)
+[complexity](references/complexity.md) · [scheduling](references/scheduling.md)
 
 ## A report
 
-```
-🌶️🌶️🌶️ *FT-0001 · CSV export drops the newest task*
-🐛 Bug · 🔧 PR ready · Hot · raised 7× ✅ Repro'd
-*What:* Users who export to CSV lose their most recent task. The file has one row too few.
-*Found:*
-• `export_csv` loops over `tasks[:-1]`, so it skips the last task.
-• We reproduced it with a failing test on 2.4.1.
-*Do:* Review and merge the PR. Check the new test covers an empty list.
-👉 Review the PR: https://github.com/acme/tasklite/pull/12
-🐙 tasklite#1 https://github.com/acme/tasklite/issues/1 · 💬 #product-feedback https://acme.slack.com/archives/…
-```
+Every report is standalone Markdown: the first line is the ticket title, a
+friendly intro says where it came from, and it reads in one of two ways — a
+**researched report** (what's happening, why, what we know), or the same plus a
+**proposed fix** that is ready to merge (a linked upstream PR we tested, or our
+own independently reviewed change). Internal queue ids never appear.
 
-Links are bare URLs so the text pastes cleanly into Slack's composer (`<url|label>`
-markup only works through the API). Bold needs Slack → Preferences → Advanced →
-"Format messages with markup". Look and wording are templated: `templates/slack/{ticket,digest}.txt` and
-`theme.json`. Override per project in `.claude/feedback-triage/slack/` and
-`.claude/feedback-triage/theme.json`.
+A real one, from the evaluation run on `python-humanize/humanize` issue #431:
+
+````markdown
+# intcomma shows large and tiny floats in scientific notation
+
+👋 Hi team! This report comes from our feedback triage, which keeps an eye on GitHub issues and Slack for bug reports and feature requests. People ran into this one, we did the digging, and there's a fix we're confident is ready to merge.
+
+**Type:** Bug · **Status:** Fix ready: an open upstream PR fixes it (we tested it) · **Reproduced:** Yes · **Reported by:** 3 people
+
+## What's happening
+
+Users who pass floats of 1e16 or more, or below 1e-4, to `intcomma` see '1e+16' with no commas. A revenue dashboard and a billing page show this.
+
+## What we found
+
+- We reproduced it on main: `intcomma(1e16)` returns '1e+16' and `intcomma(1e-05)` returns '1e-05'.
+- `intcomma` formats floats with `f"{value:,}"`, which uses exponent notation at 1e16 or more, or below 1e-4.
+- Open PR #449 also fixes it but duplicates PR #432, and it adds about 1.1 µs to every float call.
+- Both PRs leave the string input '1e20' unchanged, which is outside the reported float case.
+
+## Proposed fix
+
+PR #432 adds a branch in `intcomma` that expands exponent floats with `Decimal` before grouping. It fixes every reported case, passes the full suite on main (856 passed), and changes no output in 300,140 fuzzed floats. Check CI and review state before merging, because we could not read them.
+
+Review it here: https://github.com/python-humanize/humanize/pull/432
+
+## Open question
+
+Do you want to close PR #449 as a duplicate after you merge PR #432?
+
+## Sources
+
+- GitHub python-humanize/humanize#431 (TheNetherWatcher): https://github.com/python-humanize/humanize/issues/431
+- Slack #app-feedback (nadia): https://acme.slack.com/archives/C0APPDEV/p1791100000000100
+- Related PR (open): https://github.com/python-humanize/humanize/pull/449
+````
+
+Layout and wording live in `templates/report/report.md` and `theme.json`;
+override per project in `.claude/feedback-triage/report/`. Markdown pastes cleanly
+into Jira, Linear, GitHub, Shortcut, and most trackers; a team on Jira wiki markup
+can override the template.
 
 ## State and persistence
 
@@ -119,7 +150,7 @@ cron running `/feedback-triage:sweep` for the team. See
   conflict; `state.sh` then keeps the losing run on a pushed backup branch and
   stops, but recovering an interrupted *investigate* (claims, opened PRs) needs a
   human. Schedule phases so they don't overlap.
-- `ft/` branches that are not opened as PRs stay on the runner that built them.
+- Triage branches that are not opened as PRs stay on the runner that built them.
 - Slack replies in threads older than the read window are not read; recheck's
   "seen but untracked" URLs are printed, not queued.
 
@@ -134,4 +165,4 @@ plugins/feedback-triage/evals/run.sh intake /tmp/ft-eval         # headless run 
 `evals/` holds a fixture product (`tasklite`, with planted bugs) and GitHub/Slack
 exports with duplicates, cross-posts, a split message, and noise, plus scorers for
 intake (coverage, dedup precision/recall, type accuracy) and investigation/report
-quality (tier accuracy, spice floors, lint, message shape, cross-run agreement).
+quality (tier accuracy, lint, report shape, cross-run agreement).

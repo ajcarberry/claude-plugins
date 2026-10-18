@@ -31,7 +31,7 @@
     },
     {
       "name": "feedback-triage",
-      "description": "Feedback triage — /intake GitHub + Slack into a deduplicated queue, /recheck on a loop, /investigate with complexity-gated subagents (findings, options, or a reviewed PR), /report spiciness-rated Slack messages",
+      "description": "Feedback triage — /intake GitHub + Slack into a deduplicated queue, /recheck on a loop, /investigate with complexity-gated subagents (research, options, or a reviewed fix), /report tracker-ready tickets",
       "source": "./plugins/feedback-triage",
       "category": "productivity"
     }
