@@ -250,43 +250,73 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(p.returncode, 2)
         self.assertIn("internal ticket id", p.stdout)
 
-    def git_branch(self, name):
+    def git_branch(self, name, push=False):
+        """Project repo with a local bare 'origin'; returns the branch head."""
         d = self.e.dir
+        g = lambda *a: subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                      capture_output=True, text=True, check=True).stdout.strip()
         if not os.path.isdir(os.path.join(d, ".git")):
-            subprocess.run(["git", "init", "-q", "-b", "main", d], check=True)
-            subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
-                            "--allow-empty", "-m", "base"], check=True)
-        subprocess.run(["git", "-C", d, "branch", name], check=True)
-        return subprocess.run(["git", "-C", d, "rev-parse", name], capture_output=True, text=True).stdout.strip()
+            remote = os.path.join(d + "-remote.git")
+            subprocess.run(["git", "init", "-q", "--bare", remote], check=True)
+            self.addCleanup(subprocess.run, ["rm", "-rf", remote])
+            g("init", "-q", "-b", "main")
+            g("remote", "add", "origin", remote)
+            g("commit", "-q", "--allow-empty", "-m", "base")
+        g("branch", name)
+        if push:
+            g("push", "-q", "origin", name)
+        return g("rev-parse", name)
+
+    def commit_on(self, name):
+        d = self.e.dir
+        g = lambda *a: subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                      capture_output=True, text=True, check=True).stdout.strip()
+        g("checkout", "-q", name)
+        g("commit", "-q", "--allow-empty", "-m", "unreviewed")
+        g("checkout", "-q", "main")
+        return g("rev-parse", name)
 
     def test_gate_ties_branch_to_reviewed_commit_and_one_ticket(self):
         head = self.git_branch("triage/sso-refresh")
         self.investigate(tier="low", branch="triage/sso-refresh")
         self.assertEqual(self.e.run("review", self.id, "--verdict", "approved", "--notes", "ok", ok=False).returncode, 1)
         self.e.j("review", self.id, "--verdict", "approved", "--notes", "ok", "--commit", head)
-        gate = lambda b: self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash",
-                                      "tool_input": {"command": f"git push origin {b}"}}).returncode
-        self.assertEqual(gate("triage/sso-refresh"), 0)
+        bash = lambda c: self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                                      "tool_input": {"command": c}}).returncode
+        self.assertEqual(bash("git push origin triage/sso-refresh"), 0)
+        self.assertEqual(bash("git push -u origin refs/heads/triage/sso-refresh:refs/heads/triage/sso-refresh"), 0)
+        # the PR is built from the remote branch: not pushed yet → cannot verify → blocked
+        pr = lambda h: self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "mcp__github__create_pull_request",
+                                    "tool_input": {"head": h}}).returncode
+        self.assertEqual(pr("triage/sso-refresh"), 2)
+        subprocess.run(["git", "-C", self.e.dir, "push", "-q", "origin", "triage/sso-refresh"], check=True)
+        self.assertEqual(pr("acme:triage/sso-refresh"), 0)
+        self.assertEqual(bash("gh pr create --head triage/sso-refresh --title x"), 0)
+        # attacks: another commit pushed under the reviewed name, force, renames, --all, case games
+        other = self.commit_on("main")
+        self.assertEqual(bash(f"git push origin {other}:triage/sso-refresh"), 2)
+        self.assertEqual(bash("git push origin main:refs/heads/triage/sso-refresh"), 2)
+        self.assertEqual(bash("git push origin +triage/sso-refresh"), 2)
+        self.assertEqual(bash("git push --force origin triage/sso-refresh"), 2)
+        self.assertEqual(bash("git push origin triage/sso-refresh:main"), 2)
+        self.assertEqual(bash("git push --all origin"), 2)
+        self.assertEqual(bash("FOO=1 git -c x.y=z push origin " + other + ":TRIAGE/sso-refresh"), 2)
+        self.assertEqual(pr("TRIAGE/other"), 2)
         # a commit added after the review is not what the reviewer approved
-        subprocess.run(["git", "-C", self.e.dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
-                        "--allow-empty", "-m", "sneaky"], check=True)
-        subprocess.run(["git", "-C", self.e.dir, "branch", "-f", "triage/sso-refresh", "HEAD"], check=True)
-        self.assertEqual(gate("triage/sso-refresh"), 2)
-        # case variants of the prefix are still gated
-        self.assertEqual(self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "mcp__github__create_pull_request",
-                                      "tool_input": {"head": "TRIAGE/other"}}).returncode, 2)
+        self.commit_on("triage/sso-refresh")
+        self.assertEqual(bash("git push origin triage/sso-refresh"), 2)
         # a second ticket cannot claim the same branch
-        other = self.e.j("upsert", "--json", cand(31, title="Other", author="o"))["id"]
-        self.e.j("claim", "--ids", other)
-        res = {"id": other, "complexity": {"tier": "low", "rationale": "r"}, "repro": "reproduced",
+        other_t = self.e.j("upsert", "--json", cand(31, title="Other", author="o"))["id"]
+        self.e.j("claim", "--ids", other_t)
+        res = {"id": other_t, "complexity": {"tier": "low", "rationale": "r"}, "repro": "reproduced",
                "investigation_file": self.inv, "branch": "triage/sso-refresh"}
         self.assertEqual(self.e.run("investigated", "--json", json.dumps(res), ok=False).returncode, 2)
         # a resolved ticket's old approval does not let its branch out
         self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "resolved", "evidence": ["x"]}))
-        self.assertEqual(gate("triage/sso-refresh"), 2)
+        self.assertEqual(pr("triage/sso-refresh"), 2)
 
     def test_low_tier_gate_and_fix_ready_report(self):
-        head = self.git_branch("triage/sso-refresh")
+        head = self.git_branch("triage/sso-refresh", push=True)
         self.investigate(tier="low", branch="triage/sso-refresh")
         hook = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
                 "tool_input": {"command": "gh pr create --head triage/sso-refresh --title x"}}

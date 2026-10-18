@@ -1223,8 +1223,18 @@ def branch_head(st, branch):
     return ""
 
 
+def remote_head(st, branch):
+    remote = st.cfg["state"]["remote"]
+    try:
+        out = subprocess.run(["git", "-C", st.root, "ls-remote", remote, f"refs/heads/{branch}"],
+                             capture_output=True, text=True, timeout=8).stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        out = []
+    return out[0] if out else ""
+
+
 def cmd_gate_pr(args, st):
-    """Exit 0 if BRANCH may become a change request, else 2. Used by the PR hook."""
+    """gate-pr --branch B [--commit SHA | --remote]: exit 0 only if exactly that reviewed commit may ship."""
     branch = re.sub(r"^(?:refs/heads/|\+)", "", opt(args, "--branch") or "", flags=re.I)
     prefix = st.cfg["investigate"]["branch_prefix"]
     if not branch.casefold().startswith(prefix.casefold()) or not os.path.exists(st.index_path):
@@ -1249,11 +1259,17 @@ def cmd_gate_pr(args, st):
         raise Blocked(f"{t['id']}: the change has not passed the independent change-reviewer (review={inv.get('review')}). "
                       "Run the change-reviewer, record it with ft.py review, then open the PR")
     reviewed = inv.get("reviewed_commit")
-    head = branch_head(st, branch)
-    if not reviewed or not head or not head.startswith(reviewed):
-        raise Blocked(f"{branch} head {head[:12] or '?'} is not the commit the reviewer approved "
-                      f"({(reviewed or 'none recorded')[:12]}) — review the current head, then record it with "
-                      "ft.py review --commit")
+    if not reviewed:
+        raise Blocked(f"{t['id']}: no reviewed commit recorded — record the approval with ft.py review --commit")
+    if opt(args, "--commit"):
+        sending, where = opt(args, "--commit"), "being pushed"  # the exact commit the push sends
+    elif "--remote" in args:
+        sending, where = remote_head(st, branch), "on the remote"  # what a PR would be built from
+    else:
+        sending, where = branch_head(st, branch), "local"
+    if not sending or not (sending.startswith(reviewed) or reviewed.startswith(sending)) or len(sending) < 7:
+        raise Blocked(f"{branch}: the commit {where} ({(sending or 'unknown')[:12]}) is not the commit the reviewer "
+                      f"approved ({reviewed[:12]}) — review that commit, record it with ft.py review --commit")
 
 
 def cmd_report_set(args, st):
