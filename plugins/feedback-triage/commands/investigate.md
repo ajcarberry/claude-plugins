@@ -47,7 +47,7 @@ earlier findings). Per ticket:
 1. `change-reviewer` (foreground) with ticket, investigation, worktree, branch, base.
 2. `approved` → `ft review <ID> --verdict approved --notes "<one line>" --commit
    $(git -C <worktree> rev-parse HEAD)` (the gate only lets that exact commit out).
-   `changes` → record it, redispatch the investigator with `revise` = the notes,
+   `changes` → record it, redispatch the investigator with `revise` = the notes verbatim (add nothing),
    review again. Second `changes` (or the revise is BLOCKED) → `ft review <ID>
    --verdict changes --notes … --downgrade` and `wt remove <ID>` (branch kept). The
    ticket returns as `needs-reinvestigation`; the next claim must classify it

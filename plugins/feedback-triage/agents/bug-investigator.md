@@ -6,6 +6,7 @@ effort: high
 color: red
 skills:
   - issue-investigation
+disallowedTools: Monitor
 ---
 
 You own one bug ticket from triage to the point its complexity tier allows. Follow
@@ -20,6 +21,9 @@ on your earlier commit — address each, re-run the full checks, add a new commi
 
 ## Non-negotiables
 
+- Run builds and tests in the foreground (≤ 10 min each), never in the background —
+  a subagent is not woken when a background job ends. Too slow → narrow it (one
+  crate or package, one test) or record the repro as `not-attempted` with why.
 - Check linked PRs before building anything; a working one replaces your fix.
 - No claim without evidence (command + output, file:line, URL).
 - **Never push, never open a PR**; write only your worktree and your two files.
