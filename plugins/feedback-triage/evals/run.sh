@@ -35,7 +35,7 @@ run_claude() {
 case "$CMD" in
   setup)
     rm -rf "$WD"; mkdir -p "$WD"
-    SETUP_CMD=""; PAR=4
+    SETUP_CMD=""; PAR=4; PIN=0
     if [ "$SCEN" = realworld ]; then
       SRC="${HUMANIZE:-/home/user/python-humanize/humanize}"
       cp -R "$SRC/." "$WD/"
@@ -47,6 +47,7 @@ case "$CMD" in
       [ -d "$SRC/target" ] && ln -sfn "$SRC/target" "$WD/target"
       REPO=epicgames/lore; CH=C0LOREFB; CHN=lore-feedback
       SETUP_CMD="ln -sfn $SRC/target target"; PAR=2
+      PIN=1  # base stays at the snapshot's commit; upstream PRs can still be fetched
     else
       cp -R "$HERE/fixtures/app/." "$WD/"
       REPO=acme/tasklite; CH=C0FEEDBK; CHN=product-feedback
@@ -68,6 +69,10 @@ JSON
       printf '.scenario\nfeedback-exports/\n.claude/\n.feedback-triage/\n/target\n' >> .git/info/exclude && \
       { git add -A && git -c user.name=eval -c user.email=eval@local commit -qm "fixture" || true; } && \
       FT_PROJECT_DIR="$WD" python3 "$PLUGIN/scripts/ft.py" init >/dev/null)
+    if [ "$PIN" = 1 ]; then
+      git -C "$WD" config --replace-all remote.origin.fetch '+refs/pull/*/head:refs/remotes/origin/pr/*'
+      git -C "$WD" update-ref -d refs/remotes/origin/main 2>/dev/null || true
+    fi
     echo "$SCEN project ready: $WD" ;;
   intake)
     run_claude "/feedback-triage:intake feedback-exports/github-issues.json feedback-exports/slack-export.json --since 2024-01-01"
