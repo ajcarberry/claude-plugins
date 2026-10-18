@@ -30,7 +30,18 @@ case "$CMD" in
     if [ ${#SLUG} -gt 40 ]; then SLUG=$(echo "$SLUG" | cut -c1-41 | sed -E 's/-[^-]*$//'); fi
     if [ -d "$WT" ]; then echo "$WT"; exit 0; fi
     BRANCH="${PREFIX}${SLUG}"; n=2
-    while git -C "$ROOT" show-ref --verify --quiet "refs/heads/$BRANCH"; do BRANCH="${PREFIX}${SLUG}-$n"; n=$((n + 1)); done
+    # never reuse a name: not locally, not on the remote, not one the queue already recorded
+    USED=$(FT_PROJECT_DIR="$ROOT" python3 "$FT" list --format json 2>/dev/null | python3 -c 'import json,sys
+for t in json.load(sys.stdin):
+    i = t.get("investigation") or {}
+    for k in ("branch", "prior_attempt"):
+        if i.get(k): print(i[k].lower())' 2>/dev/null || true)
+    taken() {
+      git -C "$ROOT" show-ref --verify --quiet "refs/heads/$1" && return 0
+      git -C "$ROOT" show-ref --verify --quiet "refs/remotes/$REMOTE/$1" && return 0
+      echo "$USED" | grep -qxF "$(echo "$1" | tr '[:upper:]' '[:lower:]')"
+    }
+    while taken "$BRANCH"; do BRANCH="${PREFIX}${SLUG}-$n"; n=$((n + 1)); done
     EXCLUDE="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)/info/exclude"
     mkdir -p "$(dirname "$EXCLUDE")"; grep -qxF '.ft-worktrees/' "$EXCLUDE" 2>/dev/null || echo '.ft-worktrees/' >> "$EXCLUDE"
     git -C "$ROOT" fetch -q "$REMOTE" "$BASE" 2>/dev/null || true

@@ -1125,6 +1125,12 @@ def cmd_investigated(args, st):
         prior = t["investigation"].get("prior_attempt")
         if prior and c["tier"] == "low":
             raise BadInput(f"a low-tier attempt ({prior}) failed review twice — classify medium and keep it as an option")
+        if res.get("branch"):
+            taken = [x["id"] for x in st.all() if x["id"] != tid and res["branch"].casefold() in
+                     {(x.get("investigation") or {}).get(k, "").casefold() for k in ("branch", "prior_attempt")
+                      if (x.get("investigation") or {}).get(k)}]
+            if taken:
+                raise Blocked(f"branch {res['branch']} is already recorded on {', '.join(taken)} — use the worktree's own branch")
         if c["tier"] == "low" and not res.get("branch") and not defer:
             raise BadInput("low tier needs the branch holding the change (or an existing_pr that covers it)")
         if c["tier"] == "medium" and int(res.get("options_count") or 0) < 2:
@@ -1157,7 +1163,7 @@ def cmd_investigated(args, st):
 
 
 def cmd_review(args, st):
-    """review ID --verdict approved|changes --notes '...': the asymmetric check on a low-tier change."""
+    """review ID --verdict approved|changes --notes '...' [--commit SHA]: the independent check on a low-tier change."""
     st.require()
     tid = canonical_id(args[0])
     verdict = opt(args, "--verdict")
@@ -1171,6 +1177,13 @@ def cmd_review(args, st):
         inv = t["investigation"]
         inv["review"] = verdict
         inv["review_notes"] = notes
+        if verdict == "approved":
+            commit = opt(args, "--commit")
+            if not commit or not re.fullmatch(r"[0-9a-f]{7,40}", commit):
+                raise BadInput("an approval needs --commit <sha of the reviewed head>")
+            inv["reviewed_commit"] = commit
+        else:
+            inv.pop("reviewed_commit", None)
         history(t, "review", "reviewer", verdict=verdict)
         if verdict == "changes" and "--downgrade" in args:
             inv["review"] = "rejected"
@@ -1197,23 +1210,50 @@ def cmd_pr(args, st):
     emit({"id": tid, "pr_url": url})
 
 
+def branch_head(st, branch):
+    remote = st.cfg["state"]["remote"]
+    for ref in (f"refs/heads/{branch}", f"refs/remotes/{remote}/{branch}"):
+        try:
+            out = subprocess.run(["git", "-C", st.root, "rev-parse", "--verify", "-q", ref],
+                                 capture_output=True, text=True, timeout=5).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            out = ""
+        if out:
+            return out
+    return ""
+
+
 def cmd_gate_pr(args, st):
     """Exit 0 if BRANCH may become a change request, else 2. Used by the PR hook."""
-    branch = re.sub(r"^(?:refs/heads/|\+)", "", opt(args, "--branch") or "")
+    branch = re.sub(r"^(?:refs/heads/|\+)", "", opt(args, "--branch") or "", flags=re.I)
     prefix = st.cfg["investigate"]["branch_prefix"]
-    if not branch.startswith(prefix) or not os.path.exists(st.index_path):
+    if not branch.casefold().startswith(prefix.casefold()) or not os.path.exists(st.index_path):
         return  # not a feedback-triage branch — not our business
-    t = next((x for x in st.all() if (x.get("investigation") or {}).get("branch") == branch), None)
-    if not t:
-        raise Blocked(f"{branch} is a triage branch no ticket has finished with — only a reviewed "
-                      "low-complexity change becomes a change request")
+    owners = [x for x in st.all() if branch.casefold() in
+              {(x.get("investigation") or {}).get(k, "").casefold() for k in ("branch", "prior_attempt") if
+               (x.get("investigation") or {}).get(k)}]
+    if len(owners) != 1:
+        raise Blocked(f"{branch} is a triage branch " + ("no ticket has finished with" if not owners else
+                      f"claimed by {len(owners)} tickets") + " — only one reviewed low-complexity change "
+                      "becomes a change request")
+    t = owners[0]
+    inv = t["investigation"]
+    if inv.get("branch", "").casefold() != branch.casefold():
+        raise Blocked(f"{branch} is {t['id']}'s rejected prior attempt — it never becomes a change request")
+    if t["status"] not in REPORTABLE:
+        raise Blocked(f"{t['id']} is {t['status']} — only an active, investigated ticket's change becomes a PR")
     tier = (t.get("complexity") or {}).get("tier")
-    review = t["investigation"].get("review")
     if tier != "low":
         raise Blocked(f"{t['id']} is {tier or 'unclassified'} complexity — only low-complexity tickets get a change request")
-    if review != "approved":
-        raise Blocked(f"{t['id']}: the change has not passed the independent change-reviewer (review={review}). "
+    if inv.get("review") != "approved":
+        raise Blocked(f"{t['id']}: the change has not passed the independent change-reviewer (review={inv.get('review')}). "
                       "Run the change-reviewer, record it with ft.py review, then open the PR")
+    reviewed = inv.get("reviewed_commit")
+    head = branch_head(st, branch)
+    if not reviewed or not head or not head.startswith(reviewed):
+        raise Blocked(f"{branch} head {head[:12] or '?'} is not the commit the reviewer approved "
+                      f"({(reviewed or 'none recorded')[:12]}) — review the current head, then record it with "
+                      "ft.py review --commit")
 
 
 def cmd_report_set(args, st):

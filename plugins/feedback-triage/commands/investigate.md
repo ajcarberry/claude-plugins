@@ -42,7 +42,8 @@ earlier findings). Per ticket:
 ## 4. Low tier — independent review, then change request
 
 1. `change-reviewer` with ticket, investigation, worktree, branch, base.
-2. `approved` → `ft review <ID> --verdict approved --notes "<one line>"`.
+2. `approved` → `ft review <ID> --verdict approved --notes "<one line>" --commit
+   $(git -C <worktree> rev-parse HEAD)` (the gate only lets that exact commit out).
    `changes` → record it, redispatch the investigator with `revise` = the notes,
    review again. Second `changes` (or the revise is BLOCKED) → `ft review <ID>
    --verdict changes --notes … --downgrade` and `wt remove <ID>` (branch kept). The

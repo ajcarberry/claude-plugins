@@ -250,13 +250,49 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(p.returncode, 2)
         self.assertIn("internal ticket id", p.stdout)
 
+    def git_branch(self, name):
+        d = self.e.dir
+        if not os.path.isdir(os.path.join(d, ".git")):
+            subprocess.run(["git", "init", "-q", "-b", "main", d], check=True)
+            subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                            "--allow-empty", "-m", "base"], check=True)
+        subprocess.run(["git", "-C", d, "branch", name], check=True)
+        return subprocess.run(["git", "-C", d, "rev-parse", name], capture_output=True, text=True).stdout.strip()
+
+    def test_gate_ties_branch_to_reviewed_commit_and_one_ticket(self):
+        head = self.git_branch("triage/sso-refresh")
+        self.investigate(tier="low", branch="triage/sso-refresh")
+        self.assertEqual(self.e.run("review", self.id, "--verdict", "approved", "--notes", "ok", ok=False).returncode, 1)
+        self.e.j("review", self.id, "--verdict", "approved", "--notes", "ok", "--commit", head)
+        gate = lambda b: self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                                      "tool_input": {"command": f"git push origin {b}"}}).returncode
+        self.assertEqual(gate("triage/sso-refresh"), 0)
+        # a commit added after the review is not what the reviewer approved
+        subprocess.run(["git", "-C", self.e.dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                        "--allow-empty", "-m", "sneaky"], check=True)
+        subprocess.run(["git", "-C", self.e.dir, "branch", "-f", "triage/sso-refresh", "HEAD"], check=True)
+        self.assertEqual(gate("triage/sso-refresh"), 2)
+        # case variants of the prefix are still gated
+        self.assertEqual(self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "mcp__github__create_pull_request",
+                                      "tool_input": {"head": "TRIAGE/other"}}).returncode, 2)
+        # a second ticket cannot claim the same branch
+        other = self.e.j("upsert", "--json", cand(31, title="Other", author="o"))["id"]
+        self.e.j("claim", "--ids", other)
+        res = {"id": other, "complexity": {"tier": "low", "rationale": "r"}, "repro": "reproduced",
+               "investigation_file": self.inv, "branch": "triage/sso-refresh"}
+        self.assertEqual(self.e.run("investigated", "--json", json.dumps(res), ok=False).returncode, 2)
+        # a resolved ticket's old approval does not let its branch out
+        self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "resolved", "evidence": ["x"]}))
+        self.assertEqual(gate("triage/sso-refresh"), 2)
+
     def test_low_tier_gate_and_fix_ready_report(self):
+        head = self.git_branch("triage/sso-refresh")
         self.investigate(tier="low", branch="triage/sso-refresh")
         hook = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
                 "tool_input": {"command": "gh pr create --head triage/sso-refresh --title x"}}
         self.assertEqual(self.e.hook(hook).returncode, 2)  # review pending
         self.assertEqual(self.e.run("pr", self.id, "--url", "https://x", ok=False).returncode, 2)
-        self.e.j("review", self.id, "--verdict", "approved", "--notes", "tests cover it")
+        self.e.j("review", self.id, "--verdict", "approved", "--notes", "tests cover it", "--commit", head)
         self.assertEqual(self.e.hook(hook).returncode, 0)
         self.assertEqual(self.e.j("due", "report-writing"), [{"id": self.id, "fix_ready": True}])
         # a fix-ready report must carry the fix
@@ -387,7 +423,7 @@ class Lifecycle(unittest.TestCase):
 
     def test_reinvestigated_as_medium_drops_stale_pr(self):
         self.investigate(tier="low", branch="triage/x")
-        self.e.j("review", self.id, "--verdict", "approved", "--notes", "ok")
+        self.e.j("review", self.id, "--verdict", "approved", "--notes", "ok", "--commit", "abc1234")
         self.e.j("pr", self.id, "--url", "https://github.com/acme/app/pull/99")
         self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "needs-reinvestigation", "evidence": ["x"]}))
         self.investigate(tier="medium")
