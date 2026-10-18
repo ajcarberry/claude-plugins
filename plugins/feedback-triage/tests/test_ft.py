@@ -312,6 +312,18 @@ class Lifecycle(unittest.TestCase):
             self.assertEqual(bash(hidden), 2, hidden)
         self.assertEqual(bash("env GIT_TRACE=0 /usr/bin/git push origin " + other + ":triage/sso-refresh"), 2)
         self.assertEqual(bash("gh api repos/acme/app/pulls -f head=triage/other -f base=main"), 2)
+        # review round 4: one parsed segment must not vouch for another; flags in any position/form
+        for hidden in ("git status; /opt/tools/git-push-wrapper origin triage/sso-refresh",
+                       "gh -R acme/app pr create --head triage/other",
+                       "gh pr -R acme/app create -Htriage/other",
+                       "gh api repos/acme/app/pulls -fhead=triage/other",
+                       "gh api repos/acme/app/pulls -f head=@head.txt",
+                       "gh api repos/acme/app/pulls -f title=x -f body=triage/other",
+                       "echo triage/sso-refresh | xargs git push origin",
+                       "printf x | git push origin triage/sso-refresh"):
+            self.assertEqual(bash(hidden), 2, hidden)
+        subprocess.run(["git", "-C", self.e.dir, "config", "alias.p", "push"], check=True)
+        self.assertEqual(bash("git p origin triage/sso-refresh"), 2)
         subprocess.run(["git", "-C", self.e.dir, "checkout", "-q", "triage/sso-refresh"], check=True)
         self.assertEqual(bash("git push"), 2)  # implicit destination from a triage branch
         subprocess.run(["git", "-C", self.e.dir, "checkout", "-q", "main"], check=True)
