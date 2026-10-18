@@ -378,6 +378,7 @@ LIMITS = {  # field: (max words per sentence, max sentences, max total words)
     "what": (20, 2, 40),
     "finding": (20, 1, 20),
     "fix": (25, 3, 60),
+    "handoff": (25, 1, 25),
 }
 
 
@@ -1149,11 +1150,11 @@ def cmd_investigated(args, st):
                 inv.pop(k, None)  # a re-investigation that built nothing carries no stale PR/branch
         if c["tier"] == "low" and res.get("branch"):
             handoff = res.get("handoff") or []
-            if not isinstance(handoff, list) or len(handoff) > 3 or not all(
-                    isinstance(h, str) and h.strip() and len(words(h)) <= 25 for h in handoff):
-                raise BadInput("handoff is a list of ≤ 3 short steps (≤ 25 words each)")
-            if any(INTERNAL_ID.search(h) for h in handoff):
-                raise BadInput("handoff must not name internal ticket ids")
+            if not isinstance(handoff, list) or len(handoff) > 3 or not all(isinstance(h, str) for h in handoff):
+                raise BadInput("handoff is a list of ≤ 3 short steps")
+            bad = [e for h in handoff for e in lint_text("handoff", h)[0]]  # same prose rules as the report
+            if bad:
+                raise BadInput("; ".join(bad))
             inv.update({"branch": res["branch"], "worktree": res.get("worktree"),
                         "commit": res.get("commit"), "review": "pending", "handoff": handoff or None})
         if res.get("summary_correction"):

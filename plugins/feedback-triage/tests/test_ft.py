@@ -386,7 +386,7 @@ class Lifecycle(unittest.TestCase):
         self.e.run("claim")  # then refuse an id, an over-long step, a non-list
         res = {"id": self.id, "status": "DONE", "complexity": {"tier": "low", "rationale": "r"},
                "repro": "reproduced", "investigation_file": self.inv, "branch": "triage/sso-refresh"}
-        for h in (["Sign off as FT-0001"], ["x " * 30], "not a list"):
+        for h in (["Sign off as FT-0001."], ["x " * 30], "not a list", ["See [docs](http://evil)."], ["🔥 Merge it."]):
             self.assertEqual(self.e.run("investigated", "--json", json.dumps(dict(res, handoff=h)),
                                         ok=False).returncode, 1)
         self.e.j("investigated", "--json", json.dumps(dict(res, handoff=[
