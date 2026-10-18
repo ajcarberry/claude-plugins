@@ -7,6 +7,9 @@
 # fixtures  — synthetic tasklite app with planted bugs (fast, fully known truth)
 # realworld — python-humanize/humanize at HEAD + a snapshot of its real issues
 #             (needs a clone at $HUMANIZE, default /home/user/python-humanize/humanize)
+# lore      — epicgames/lore (Rust) at HEAD + a snapshot of its real issues
+#             (needs a clone at $LORE, default /home/user/epicgames/lore; a built
+#             target/ there is shared with ticket worktrees so repros build incrementally)
 #
 # Each run writes <workdir>-<phase>-<ts>.jsonl (stream-json) and prints the score;
 # analyze.py summarises tokens, cost, and which plugin files were read.
@@ -30,10 +33,18 @@ run_claude() {
 case "$CMD" in
   setup)
     rm -rf "$WD"; mkdir -p "$WD"
+    SETUP_CMD=""
     if [ "$SCEN" = realworld ]; then
       SRC="${HUMANIZE:-/home/user/python-humanize/humanize}"
       cp -R "$SRC/." "$WD/"
       REPO=python-humanize/humanize; CH=C0APPDEV; CHN=app-feedback
+    elif [ "$SCEN" = lore ]; then
+      SRC="${LORE:-/home/user/epicgames/lore}"
+      (cd "$SRC" && tar --exclude=./target -cf - .) | (cd "$WD" && tar -xf -)
+      # one shared build cache: worktrees symlink it (ignored by **/target/ … as a link too)
+      [ -d "$SRC/target" ] && ln -sfn "$SRC/target" "$WD/target"
+      REPO=epicgames/lore; CH=C0LOREFB; CHN=lore-feedback
+      SETUP_CMD="ln -sfn $SRC/target target"
     else
       cp -R "$HERE/fixtures/app/." "$WD/"
       REPO=acme/tasklite; CH=C0FEEDBK; CHN=product-feedback
@@ -47,12 +58,12 @@ case "$CMD" in
     "github": [{"repo": "$REPO", "export": "feedback-exports/github-issues.json"}],
     "slack": [{"channel": "$CHN", "id": "$CH", "export": "feedback-exports/slack-export.json"}]
   },
-  "investigate": {"base_branch": "main", "open_prs": false}
+  "investigate": {"base_branch": "main", "open_prs": false, "setup": "$SETUP_CMD"}
 }
 JSON
     echo "$SCEN" > "$WD/.scenario"
     (cd "$WD" && { [ -d .git ] || git init -q -b main; } && git checkout -q -B main && \
-      printf '.scenario\nfeedback-exports/\n.claude/\n.feedback-triage/\n' >> .git/info/exclude && \
+      printf '.scenario\nfeedback-exports/\n.claude/\n.feedback-triage/\n/target\n' >> .git/info/exclude && \
       { git add -A && git -c user.name=eval -c user.email=eval@local commit -qm "fixture" || true; } && \
       FT_PROJECT_DIR="$WD" python3 "$PLUGIN/scripts/ft.py" init >/dev/null)
     echo "$SCEN project ready: $WD" ;;

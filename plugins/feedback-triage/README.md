@@ -98,10 +98,6 @@ PR #432 adds a branch in `intcomma` that expands exponent floats with `Decimal` 
 
 Review it here: https://github.com/python-humanize/humanize/pull/432
 
-## Open question
-
-Do you want to close PR #449 as a duplicate after you merge PR #432?
-
 ## Sources
 
 - GitHub python-humanize/humanize#431 (TheNetherWatcher): https://github.com/python-humanize/humanize/issues/431
