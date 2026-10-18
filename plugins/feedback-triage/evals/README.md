@@ -6,6 +6,17 @@ judgment layer.
 
 ## Scenarios
 
+**`lore/`** — the standard real-world scenario: `epicgames/lore` (a Rust
+version-control system, ~1,400 source files) at HEAD plus a snapshot of 12 of its
+real issues (code blocks, versions, and errors verbatim; some prose paraphrased by
+the fetch tool) and a Slack export whose messages are synthetic but restate real
+reports. Real traps: #238 and #225 are already fixed on main by recent commits,
+and #238's maintainer says so while the issue stays open; #220/#222 are largely
+addressed by storage commits from the last week; Lore lands PRs as mirrored
+commits, so a closed PR may be merged; #236 is closed as fixed; CONTRIBUTING.md
+requires DCO sign-off and human-written PR descriptions. Set `LORE=<built clone
+with history>` for `run.sh setup`; ticket worktrees share its `target/`.
+
 **`realworld/`** — the real `python-humanize/humanize` repository at HEAD plus a
 snapshot of 10 of its real issues (bodies paraphrased by the fetch tool; titles,
 metadata, comments, and linked PRs exact) and a small Slack export whose messages
@@ -25,12 +36,12 @@ as a duplicate of a PR that is already merged, and the intword tickets (#356,
   holding two issues, `+1` thread replies, a closed-and-fixed issue, chatter, a
   how-to question, and a bot post.
 - `fixtures/expected.json` — the 8 true tickets, which refs belong to each,
-  acceptable tiers, spice floors, and the 4 refs that must be ignored.
+  acceptable tiers, and the 4 refs that must be ignored.
 
 ## Running
 
 ```bash
-SCENARIO=realworld evals/run.sh setup /tmp/ft-e1   # or fixtures (default)
+SCENARIO=lore evals/run.sh setup /tmp/ft-e1   # or realworld, fixtures (default)
 evals/run.sh intake /tmp/ft-e1         # → score_intake.py
 evals/run.sh investigate /tmp/ft-e1    # (--no-pr) → ft.py list
 evals/run.sh report /tmp/ft-e1         # → score_reports.py
@@ -54,10 +65,10 @@ fixture costs about $8 and takes about 30 minutes.
 | type accuracy | score_intake | 8/8 |
 | idempotence — rerun creates nothing | log count | 0 new |
 | tier within the acceptable set | score_reports | 8/8 |
-| spice floor (data loss ≥ Hot) | score_reports | 1/1 |
+| fixed-on-base found / wrongly claimed | score_reports | all / none |
 | lint errors / warnings on stored reports | score_reports | 0 / 0 |
 | rendered message shape | score_reports | no deviations |
-| cross-run tier / spice agreement | score_reports | as high as the cases allow |
+| cross-run tier agreement | score_reports | as high as the cases allow |
 
 ## Results log
 
