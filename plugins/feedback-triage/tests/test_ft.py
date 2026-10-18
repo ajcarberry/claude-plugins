@@ -336,6 +336,16 @@ class Lifecycle(unittest.TestCase):
                        "gh my-extension create --head triage/x"):
             self.assertEqual(bash(hidden), 2, hidden)
         self.assertEqual(bash("git log --oneline > /tmp/x 2>&1 && git status"), 0)
+        # review round 6: operator runs the tokenizer merges, config overrides before push
+        for hidden in (f"(git push origin {other}:triage/sso-refresh)",
+                       f"true;&git push origin {other}:triage/sso-refresh",
+                       "git -c remote.origin.push=refs/heads/main:refs/heads/triage/sso-refresh push origin",
+                       "git --config-env=core.x=Y push origin triage/sso-refresh",
+                       "git --unknown-global push origin triage/sso-refresh",
+                       "git help push origin triage/sso-refresh"):
+            self.assertEqual(bash(hidden), 2, hidden)
+        for fine in ("git --no-pager log -1", "git stash push -m wip", "git log --grep push"):
+            self.assertEqual(bash(fine), 0, fine)
         subprocess.run(["git", "-C", self.e.dir, "checkout", "-q", "triage/sso-refresh"], check=True)
         self.assertEqual(bash("git push"), 2)  # implicit destination from a triage branch
         subprocess.run(["git", "-C", self.e.dir, "checkout", "-q", "main"], check=True)

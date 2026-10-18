@@ -81,6 +81,8 @@ def segments(cmd):
         return None  # unbalanced quotes: unparseable
     out, cur, piped, nxt = [], [], False, False
     for t in toks + [";"]:
+        if t and all(c in "();<>&|" for c in t) and t not in CONTROL and not REDIRECT.match(t):
+            return None  # an operator run we don't understand ((, ), ;&, )|, …): fail closed
         if t in CONTROL:
             if cur:
                 out.append((cur, " ".join(cur), piped))
@@ -216,6 +218,8 @@ name-rev notes pull push range-diff read-tree rebase reflog remote repack replac
 rev-parse revert rm shortlog show show-branch show-ref sparse-checkout stash status submodule switch symbolic-ref
 tag update-index update-ref var verify-commit verify-tag version whatchanged worktree write-tree""".split())
 GH_FLAGS_WITH_VALUE = {"-R", "--repo", "--hostname"}
+GIT_SAFE_GLOBALS = {"--no-pager", "-P", "-p", "--paginate", "--no-optional-locks", "--literal-pathspecs",
+                    "--no-replace-objects"}
 
 
 def check_bash(st, cmd, cwd):
@@ -255,22 +259,23 @@ def check_bash(st, cmd, cwd):
         if GIT_RE.search(toks[0]):
             j, here = 1, where
             while j < len(toks) and toks[j].startswith("-"):
-                if toks[j] in ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"):
-                    if toks[j] == "-C" and j + 1 < len(toks):
-                        here = os.path.join(here, toks[j + 1]) if not os.path.isabs(toks[j + 1]) else toks[j + 1]
-                    elif toks[j] != "-c":
-                        fail(f"git {toks[j]} can't be checked — run git from the repository instead.")
+                if toks[j] == "-C" and j + 1 < len(toks):
+                    here = os.path.join(here, toks[j + 1]) if not os.path.isabs(toks[j + 1]) else toks[j + 1]
                     j += 2
-                elif toks[j].startswith(("--git-dir=", "--work-tree=", "--exec-path=", "--namespace=", "-c")):
-                    fail(f"git {toks[j]} can't be checked — run git from the repository instead.")
+                elif toks[j] in GIT_SAFE_GLOBALS:
                     j += 1
-                else:
-                    j += 1
+                else:  # -c, --config-env, --git-dir, --exec-path, …: config can change what push does
+                    fail(f"git {toks[j]} can't be checked — run git without global overrides.")
+                    j += 2 if toks[j] in ("-c", "--config-env", "--git-dir", "--work-tree",
+                                          "--namespace", "--exec-path", "--super-prefix") else 1
             sub = toks[j] if j < len(toks) else ""
             if sub == "push":
                 if piped_in:
                     fail("git push reading from a pipe can't be checked — run it directly.")
                 check_push(st, toks[j + 1:], here)
+            elif sub != "stash" and any(t == "push" and not toks[j + i].startswith("-")
+                                        for i, t in enumerate(toks[j + 1:])):
+                fail(f"git {sub} … push can't be checked — run git push directly.")
             elif sub and sub not in GIT_KNOWN:
                 fail(f"git '{sub}' is not a built-in command the gate knows (alias or extension) — "
                      "run the real git command.")
