@@ -1,0 +1,51 @@
+{
+ "channel": {
+  "id": "C0LOREFB",
+  "name": "lore-feedback"
+ },
+ "messages": [
+  {
+   "ts": "1792000000.000100",
+   "user": "priya",
+   "text": "heads up: on 0.10.0 a `lore --dry-run clone` into our existing workspace folder left a `.lore` dir in it, and then the real clone refused with \"Repository already exist in path\". had to delete .lore by hand",
+   "permalink": "https://acme.slack.com/archives/C0LOREFB/p1792000000000100"
+  },
+  {
+   "ts": "1792000400.000200",
+   "user": "marco",
+   "text": "same on the build farm agents, the nightly dry-run check now breaks the real clone step",
+   "permalink": "https://acme.slack.com/archives/C0LOREFB/p1792000400000200?thread_ts=1792000000.000100&cid=C0LOREFB",
+   "thread_ts": "1792000000.000100"
+  },
+  {
+   "ts": "1792010000.000100",
+   "user": "tomasz",
+   "text": "+1 to https://github.com/epicgames/lore/issues/238 — our art team's push of a 3 GB texture drop fails with `missing fragment` every retry, lots of duplicate textures in it",
+   "permalink": "https://acme.slack.com/archives/C0LOREFB/p1792010000000100"
+  },
+  {
+   "ts": "1792020000.000100",
+   "user": "dana",
+   "text": "our test server store has `max_size` set and reports itself under the limit, but the disk it lives on is way past that. looks like only the pack files are counted, not the index files next to them",
+   "permalink": "https://acme.slack.com/archives/C0LOREFB/p1792020000000100"
+  },
+  {
+   "ts": "1792030000.000100",
+   "user": "kenji",
+   "text": "feature wish: a `lore difftool` like git's, so artists can open Beyond Compare or Araxis on a changed file instead of reading the text diff",
+   "permalink": "https://acme.slack.com/archives/C0LOREFB/p1792030000000100"
+  },
+  {
+   "ts": "1792040000.000100",
+   "user": "lore-ci",
+   "text": "Nightly build lore-server 0.10.1+1290 published to the internal registry",
+   "permalink": "https://acme.slack.com/archives/C0LOREFB/p1792040000000100"
+  },
+  {
+   "ts": "1792050000.000100",
+   "user": "sam",
+   "text": "where are the docs for the server's `[immutable_store.local]` options? trying to find what compaction_delay means",
+   "permalink": "https://acme.slack.com/archives/C0LOREFB/p1792050000000100"
+  }
+ ]
+}

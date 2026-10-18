@@ -1,0 +1,138 @@
+{
+ "groups": {
+  "223-delete-notfound": {
+   "type": "bug",
+   "refs": [
+    "github:epicgames/lore#223"
+   ],
+   "tiers": [
+    "low",
+    "medium"
+   ],
+   "repro": true
+  },
+  "215-dryrun-clone-lore": {
+   "type": "bug",
+   "refs": [
+    "github:epicgames/lore#215",
+    "slack:C0LOREFB/1792000000.000100"
+   ],
+   "tiers": [
+    "low",
+    "medium"
+   ],
+   "repro": true
+  },
+  "235-json-history-complete": {
+   "type": "bug",
+   "refs": [
+    "github:epicgames/lore#235"
+   ],
+   "tiers": [
+    "low",
+    "medium"
+   ],
+   "repro": true
+  },
+  "249-status-moves": {
+   "type": "bug",
+   "refs": [
+    "github:epicgames/lore#249"
+   ],
+   "tiers": [
+    "medium",
+    "high"
+   ]
+  },
+  "241-scan-merge-conflict": {
+   "type": "bug",
+   "refs": [
+    "github:epicgames/lore#241"
+   ],
+   "tiers": [
+    "medium",
+    "high"
+   ]
+  },
+  "238-grpc-copies": {
+   "type": "bug",
+   "refs": [
+    "github:epicgames/lore#238",
+    "slack:C0LOREFB/1792010000.000100"
+   ],
+   "tiers": [
+    "low",
+    "medium",
+    "high"
+   ],
+   "fixed_on_base": true
+  },
+  "220-compaction-destroys": {
+   "type": "bug",
+   "refs": [
+    "github:epicgames/lore#220"
+   ],
+   "tiers": [
+    "high",
+    "medium"
+   ],
+   "fixed_on_base": "maybe"
+  },
+  "222-max-size-packstore": {
+   "type": "bug",
+   "refs": [
+    "github:epicgames/lore#222",
+    "slack:C0LOREFB/1792020000.000100"
+   ],
+   "tiers": [
+    "medium",
+    "high",
+    "low"
+   ],
+   "fixed_on_base": "maybe"
+  },
+  "225-obliterate-resurrect": {
+   "type": "bug",
+   "refs": [
+    "github:epicgames/lore#225"
+   ],
+   "tiers": [
+    "high",
+    "medium"
+   ],
+   "fixed_on_base": true
+  },
+  "243-fs-watcher": {
+   "type": "feature",
+   "refs": [
+    "github:epicgames/lore#243"
+   ],
+   "tiers": [
+    "high"
+   ]
+  },
+  "245-difftool": {
+   "type": "feature",
+   "refs": [
+    "github:epicgames/lore#245",
+    "slack:C0LOREFB/1792030000.000100"
+   ],
+   "tiers": [
+    "medium",
+    "high"
+   ]
+  }
+ },
+ "ignored": [
+  "github:epicgames/lore#236",
+  "slack:C0LOREFB/1792040000.000100",
+  "slack:C0LOREFB/1792050000.000100"
+ ],
+ "ambiguous_pairs": [
+  [
+   "github:epicgames/lore#220",
+   "github:epicgames/lore#222"
+  ]
+ ],
+ "notes": "Real traps: #238 is fixed on main by 0a0c9a3 (maintainer also says so; issue still open); #225 is fixed by aa4e5fe; #220/#222 are largely addressed by 5416559 and f345a4f. Lore lands PRs as mirrored commits, so a closed PR may be merged. #236 is closed as fixed. CONTRIBUTING requires DCO sign-off and human-written PR descriptions."
+}

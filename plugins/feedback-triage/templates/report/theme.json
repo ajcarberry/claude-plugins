@@ -29,6 +29,7 @@
     "pr": "Related PR"
   },
   "labels": {
-    "review": "Review it here:"
+    "review": "Review it here:",
+    "handoff": "Before you merge:"
   }
 }

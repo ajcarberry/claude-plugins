@@ -69,9 +69,17 @@ def score_run(project, exp):
     groups = group_map(st, tickets, exp)
     res = {"tier_ok": 0, "tier_total": 0,
            "lint_errors": 0, "lint_warnings": 0, "reports": 0, "fix_ready": 0, "shape_bad": [], "tiers": {},
+           "fixed_on_base": {"hit": [], "missed": [], "wrong": []},
            "words": {"headline": [], "what": [], "finding": [], "fix": []}}
     for g, t in groups.items():
         spec = exp["groups"][g]
+        # fixed_on_base: true = must be found fixed on the base branch; "maybe" = either is fine
+        fixed = bool(t and (t.get("verification") or {}).get("fixed_by"))
+        want = spec.get("fixed_on_base", False)
+        if want is True:
+            res["fixed_on_base"]["hit" if fixed else "missed"].append(g)
+        elif fixed and want is False:
+            res["fixed_on_base"]["wrong"].append(g)
         if not t or not t.get("complexity"):
             continue
         tier = t["complexity"]["tier"]

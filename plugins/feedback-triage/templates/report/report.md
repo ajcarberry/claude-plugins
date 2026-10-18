@@ -20,6 +20,8 @@
 {{fix}}
 
 {{fix_link}}
+
+{{handoff}}
 {{/fix}}
 
 ## Sources

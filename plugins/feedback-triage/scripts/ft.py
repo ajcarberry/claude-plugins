@@ -589,6 +589,9 @@ def ticket_values(t, theme):
         "findings": rep["findings"],
         "fix": rep.get("fix") or "",
         "fix_link": f"{theme['labels']['review']} {link}" if link and rep.get("fix") else "",
+        # steps the project's rules leave to a person (sign-off, PR description): only for our own change
+        "handoff": (f"**{theme['labels']['handoff']}** " + " ".join(h.rstrip('.') + "." for h in inv["handoff"]))
+                   if kind in ("ours", "branch") and inv.get("handoff") and rep.get("fix") else "",
         "sources": sources,
     }
 
@@ -597,7 +600,7 @@ def report_hash(t):
     inv = t.get("investigation") or {}
     rep = {k: v for k, v in (t.get("report") or {}).items() if not k.startswith("_")}
     basis = {"report": rep, "fix": fix_kind(t), "reporters": reporters(t),
-             "tier": (t.get("complexity") or {}).get("tier"), "pr": inv.get("pr_url"),
+             "tier": (t.get("complexity") or {}).get("tier"), "pr": inv.get("pr_url"), "handoff": inv.get("handoff"),
              "existing_pr": (inv.get("existing_pr") or {}).get("verdict"),
              "status": "closed" if t["status"] in CLOSED_STATUSES else "open"}
     return hashlib.sha256(json.dumps(basis, sort_keys=True).encode()).hexdigest()[:16]
@@ -1062,7 +1065,7 @@ def cmd_release(args, st):
 INVESTIGATION_KEYS = {"id", "status", "type", "complexity", "repro",
                       "investigation_file", "branch", "worktree", "commit", "summary_correction",
                       "concerns", "options_count", "root_cause", "existing_pr",
-                      "fixed_on_base"}
+                      "fixed_on_base", "handoff"}
 
 
 def cmd_investigated(args, st):
@@ -1142,11 +1145,17 @@ def cmd_investigated(args, st):
         inv["existing_pr"] = ext or None
         inv["attempts"] = 0  # failures reset after a success
         if not (c["tier"] == "low" and res.get("branch")):
-            for k in ("branch", "worktree", "commit", "review", "review_notes", "pr_url"):
+            for k in ("branch", "worktree", "commit", "review", "review_notes", "pr_url", "handoff"):
                 inv.pop(k, None)  # a re-investigation that built nothing carries no stale PR/branch
         if c["tier"] == "low" and res.get("branch"):
+            handoff = res.get("handoff") or []
+            if not isinstance(handoff, list) or len(handoff) > 3 or not all(
+                    isinstance(h, str) and h.strip() and len(words(h)) <= 25 for h in handoff):
+                raise BadInput("handoff is a list of ≤ 3 short steps (≤ 25 words each)")
+            if any(INTERNAL_ID.search(h) for h in handoff):
+                raise BadInput("handoff must not name internal ticket ids")
             inv.update({"branch": res["branch"], "worktree": res.get("worktree"),
-                        "commit": res.get("commit"), "review": "pending"})
+                        "commit": res.get("commit"), "review": "pending", "handoff": handoff or None})
         if res.get("summary_correction"):
             history(t, "summary-corrected", "investigate", old=t["summary"])
             t["summary"] = res["summary_correction"]

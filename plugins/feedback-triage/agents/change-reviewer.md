@@ -22,8 +22,10 @@ Check, in order:
    (must pass).
 3. **Still low tier** — ≤ ~3 files, one module, ~100 lines, no auth/payments/
    security/migration/public-API/infra, no behaviour change nobody asked for.
-4. **Quality** — matches surrounding style; no unrelated edits, debug leftovers,
-   or secrets; error paths handled.
+4. **Quality** — matches surrounding style and the project's contribution rules
+   (CONTRIBUTING.md: lint, format, tests, commit style); no unrelated edits, debug
+   leftovers, or secrets; error paths handled. Rules only a person can meet belong
+   in the investigator's `handoff`, not in the commit.
 
 Return (≤ 10 lines, first line the verdict):
 ```

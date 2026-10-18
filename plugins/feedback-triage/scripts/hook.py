@@ -144,11 +144,14 @@ def remote_owner(st, where):
     return m.group(1).lower() if m else ""
 
 
-def check_head(st, head, where):
-    """PR head: 'branch' or 'owner:branch'. Fork heads cannot be verified → blocked."""
+def check_head(st, head, where, text=""):
+    """PR head: 'branch' or 'owner:branch'. Fork heads cannot be verified → blocked.
+    text: the PR's title and body, which must not carry internal ticket ids."""
     owner, _, branch = head.rpartition(":")
     if not is_triage(st, branch):
         return
+    if ft.INTERNAL_ID.search(text):
+        block("internal ticket ids (FT-…) never go in a PR title or body — use the upstream issue.")
     if owner and owner.lower() != remote_owner(st, where):
         block(f"PR head {head} is not on the configured remote — triage PRs come from our own branch.")
     gate_branch(st, branch, remote=True)
@@ -302,7 +305,12 @@ def check_bash(st, cmd, cwd):
                 head = flag_value(toks, q, ("-H",), ("--head",)) or head
             if head and head.startswith("@"):
                 fail("a PR head read from a file can't be checked.")
-            check_head(st, head or git(where, "branch", "--show-current"), where)
+            text = " ".join(toks)
+            for q in range(len(toks)):
+                bf = flag_value(toks, q, ("-F",), ("--body-file",))
+                if bf and bf != "-" and os.path.isfile(os.path.join(where, bf)):
+                    text += " " + open(os.path.join(where, bf), errors="replace").read()
+            check_head(st, head or git(where, "branch", "--show-current"), where, text)
         elif group == "api":
             text = " ".join(toks)
             if not re.search(r"\bpulls\b|graphql", text):
@@ -353,7 +361,7 @@ def main():
         if "FT_SKIP_GATE=1" not in cmd:
             check_bash(st, cmd, cwd)
     elif re.search(r"create_pull_request", tool):
-        check_head(st, ti.get("head") or "", cwd)
+        check_head(st, ti.get("head") or "", cwd, f"{ti.get('title') or ''} {ti.get('body') or ''}")
     return 0
 
 

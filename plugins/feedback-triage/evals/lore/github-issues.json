@@ -1,0 +1,222 @@
+[
+ {
+  "number": 249,
+  "title": "`status` shows file-level moves under a moved folder as additions, while the commit records them as moves",
+  "body": "### Lore version\nlore 0.10.1+1476-lore_v0.10.1__urc_main\n### Installation method\nPrebuilt release binary\n### Operating system / architecture\nWindows -- x86_64\n### Steps to reproduce\nFresh offline repository on Windows 11 (NTFS), LORE_USE_SERVICE=0 (round r15 in attached rounds.py; round r22 shows the same for a move into an untracked folder).\n```\nlore repository create --offline\nmkdir Content Other\nprintf map > Content/map.txt\nprintf n > Content/notes.txt\nprintf c > Other/c.txt\nlore stage --scan .\nlore commit r1\n```\n```\nmv Content Maps\nlore stage move Content Maps\nlore status --scan\nlore status --reset\nlore stage move Content/map.txt Maps/map.txt\nlore stage move Content/notes.txt Maps/notes.txt\nlore status                    # lists the files as A\nlore commit r2\nlore file history Maps/map.txt # reads V\n```\nSame on 0.10.0.\n### Expected vs actual behavior\nExpected `status` to list the two file moves, matching the commit. Instead `status` shows the folder and both files as additions, while the commit records them as moves, so `status` cannot be relied on to predict what a commit will record. (References a \"report 1\" describing the opposite direction: status shows a move the commit records as additions.)\n### Component\nClient (CLI)\n### Server context\n_No response_\n### Regression?\nNot known; same on 0.10.0 and 0.10.1\n### Relevant logs or output\n```\n$ lore stage move Content Maps\n    Staging 1 directories (0 added, 0 deleted, 1 moved)\n$ lore status --scan\n    Changes staged for commit:\n    V Content/ -> Maps/\n    No tracked changes\n$ lore status --reset\n$ lore stage move Content/map.txt Maps/map.txt\n    Staging 1 directories (1 added, 0 deleted, 0 moved),  1 files (0 modified, 0 added, 0 deleted, 1 moved)\n$ lore stage move Content/notes.txt Maps/notes.txt\n    Staging 1 files (0 modified, 0 added, 0 deleted, 1 moved)\n$ lore status\n    Changes staged for commit:\n    A Maps/\n    A Maps/map.txt\n    A Maps/notes.txt\n$ lore commit r2\n    Committed 1/1 directories, 2/2 files, 4 bytes/4 bytes (2 modified, 0 deleted)\n    Commit succeeded\n$ lore file history Maps/map.txt\n    V Content/map.txt -> Maps/map.txt\n    Revision  : 2\n    A Content/map.txt\n    Revision  : 1\n```\nAttachment: lore-0.10.1-staging.zip",
+  "author": {
+   "login": "OccultArt"
+  },
+  "createdAt": "2026-10-18T12:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "closedAt": null,
+  "labels": [
+   "bug",
+   "needs-triage"
+  ],
+  "url": "https://github.com/epicgames/lore/issues/249",
+  "comments": [],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 245,
+  "title": "Support external diff tools (`git difftool` equivalent)",
+  "body": "### Problem\nI like to review my changes with `meld` before committing them\n### Proposed solution\nProvide functionality equivalent to `git difftool`\n### Alternatives considered\nI've been running `lore diff` for now, but it's much less friendly than having a nice GUI",
+  "author": {
+   "login": "benmccann"
+  },
+  "createdAt": "2026-10-16T12:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "closedAt": null,
+  "labels": [
+   "enhancement",
+   "needs-triage"
+  ],
+  "url": "https://github.com/epicgames/lore/issues/245",
+  "comments": [],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 243,
+  "title": "Internal filesystem watcher for dirty tracking",
+  "body": "### Problem\nMake Lore usable with text editors and shell scripts without a Lore integration; status tracking is easier to build inside Lore than in many editor plugins. Cites an HN comment: \"So this isn't compatible with any tools that move or rename files.\" LLMs default to Git, and an AGENTS.md would be one more step to using Lore. Would make status return instantly without a scan.\n### Proposed solution\nLore owns filesystem change detection via a built-in watcher in its background service, following Git's built-in filesystem monitor model. Detected paths are reconciled into existing dirty-state tracking before status or directory staging uses it. A LEP may be appropriate; asks about openness.\nImplementation options: (1) internal watcher behind an option, users choose it vs an IDE plugin; (2) remove manual dirty marking to match Git; (3) enable both and mark files dirty twice. An IDE can record a move, while the filesystem can only detect moves automatically on Linux with fanotify, not on Mac or Windows.\n### Alternatives considered\nKeep the existing dirty-file scan as a backup. Recent speedups (ignore-file support, parallel scanning) help, but the scan may still be too slow as the default on very large projects.",
+  "author": {
+   "login": "benmccann"
+  },
+  "createdAt": "2026-10-15T12:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "closedAt": null,
+  "labels": [
+   "enhancement",
+   "needs-triage"
+  ],
+  "url": "https://github.com/epicgames/lore/issues/243",
+  "comments": [],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 241,
+  "title": "`status --scan` during a merge silently resolves a delete/modify conflict as a deletion",
+  "body": "Lore version: lore 0.10.1+1476-lore_v0.10.1__urc_main\nInstallation method: install.sh; server ghcr.io/epicgames/lore/loreserver:0.10.1 in Docker (linux/amd64)\nOS / architecture: macOS, Apple Silicon (arm64)\nComponent: CLI: merge / status\nServer context: single local server, auth disabled\n\n### Steps to reproduce\n```\nmkdir repro && cd repro\nlore repository create lore://127.0.0.1:41337/repro\necho base > f.txt && lore stage f.txt && lore commit \"base\" && lore push\nlore branch create b && lore branch switch b\necho edited > f.txt && lore stage f.txt && lore commit \"edit on b\" && lore push\nlore branch switch main\nrm f.txt && lore stage f.txt && lore commit \"delete on main\" && lore push\nlore branch merge b      # f.txt in conflict: deleted on main, edited on b\nlore status --scan       # still lists f.txt under \"Changes in conflict\"\nlore status              # the conflict is gone\nlore commit \"merge\"      # succeeds; f.txt stays deleted, b's edit is lost\n```\n### Expected vs actual\nExpected: f.txt stays in conflict until resolved with `resolve mine` or `resolve theirs`, and commit refuses until then.\nActual: `status --scan` sees f.txt missing from disk and records the conflict as resolved by deleting it. The scan output still shows the conflict, but the next `status` does not, and the commit drops b's edit without a prompt. `f.txt~theirs` is left on disk.\n### Notes\n- Without the scan, `lore branch merge resolve theirs f.txt` restores the file correctly.\n- After the scan, `resolve theirs f.txt` exits 0 with no output even though nothing is in conflict; a \"not in conflict\" warning would make the problem visible.\n- Possibly related: #136 (the opposite symptom: status shows the conflict as resolved, but commit says it is still conflicted).\n### Regression?\nNo. Reproduces identically on 0.9.0 and 0.10.0, each with its matching server image.\n\n_Found while building a small GUI wrapper for Lore with Claude; reproduction and version checks were run with Claude's help on a local server._",
+  "author": {
+   "login": "KasparsSverns"
+  },
+  "createdAt": "2026-10-12T12:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "closedAt": null,
+  "labels": [],
+  "url": "https://github.com/epicgames/lore/issues/241",
+  "comments": [],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 238,
+  "title": "gRPC client drops copies that share a source address, so pushes fail with \"missing fragment\"",
+  "body": "Lore version: client 0.10.0+1172-lore_v0.10.0__urc_main, server v0.10.0 (b1debb2). Client code unchanged on `main`.\nInstallation method: Prebuilt release binary.\nOS / architecture: Windows, x86_64.\nSteps to reproduce: Run lore-server v0.10.0 with local stores and gRPC. Create a repository over `grpc://127.0.0.1:41337/<repo>`. Commit 1,057 files (2.8 GB), 624 of which repeat earlier content. The commit succeeds, but `lore push` fails with `missing fragment`. Reproduced on first attempt.\nExpected vs actual: Expected every copy the client reports as done to exist on the server. Actually the client reports copies as done that it never sent. `CompositeStore::put` turns repeated puts into copies (`can_put_use_copy`), and the gRPC client correlates copy responses by source address only. A second copy with the same source but a different target is never written, so push verification reports it missing.\nPossible fixes: (1) correlate copy responses per request, as Get and Put already do with `request_id`; (2) echo the target context in `CopyResponse` and key in-flight copies by source and target; (3) client-only: allow one in-flight copy per source address at a time.\nComponent: Client (CLI)\nServer context: built from source, local immutable and mutable stores, auth off, `request_handler_timeout_seconds = 1800`, connected over `grpc://`.\nRegression?: Visible since 0.9.0, when repeated content began uploading as copies; 0.8.x uploaded every file in full and pushed fine.\nRelevant logs or output: push error `Address not found: 0ab90cf7f1e8bbe130fbd51fc4ad0e389273b4c21ba2a458e37a4b5a9f5c7686-01a115779ac27ea3b38597ede1eeb490`. The client logged five copies from the same source within one millisecond, each to a different target context. The server later showed one target as stored and the other four as only \"Hash exist\", including the target push reported missing.",
+  "author": {
+   "login": "LuukAsmus"
+  },
+  "createdAt": "2026-10-07T12:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "closedAt": null,
+  "labels": [],
+  "url": "https://github.com/epicgames/lore/issues/238",
+  "comments": [
+   {
+    "author": {
+     "login": "mjansson"
+    },
+    "createdAt": "2026-10-16T12:00:00Z",
+    "body": "As discussed in person this should be fixed now on latest main, please test and let me know"
+   }
+  ],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 236,
+  "title": "Diverged sync merge fails to commit: weave_history indexes parent_self node ids into a tree derived from the other parent (Invalid block index)",
+  "body": "### Lore version\nlore 0.9.0+783 (client). The code path below is unchanged in v0.10.1.\n### Installation method\nBuilt from source (self-hosted server, official client build).\n### Operating system / architecture\nmacOS (Darwin 25.6), arm64.\n### Steps to reproduce\n1. Clone a repository, commit locally on `main` without pushing. The local commit should be large relative to the tree (ours added ~700 files and deleted ~600 — a directory move).\n2. Meanwhile another client pushes a few revisions to `main` (the remote tip's own commit touched 22 files).\n3. Run `lore sync`. The branches have diverged, so sync starts the automatic merge flow.\n### Expected vs actual behavior\nExpected: sync merges and auto-commits the merge revision. Actual: the three-way merge is realized correctly in the working tree, but the auto-commit fails, and a manual `lore commit` of the pending merge fails the same way:\n```\n[Debug] Rehashed merkle tree\n[Debug] Generated delta block with 1137 nodes\n[Debug] Weave branch history\n[Debug] Weaving 22 delta entries\n[Error] Failed deserializing file metadata block: Invalid block index: 48\n  at lore-revision/src/state.rs:1669:24\n  at lore-revision/src/commit.rs:3061 - Failed deserializing file metadata block\n```\nThe pending merge cannot be committed; the only way out is to drop it (reset onto the remote tip) and replay local changes by hand.\n### Analysis\n- Diverged-sync merge calls `apply_diff` with `reverse_parents = true` (branch/merge.rs) to keep remote history as the main line, so the staged state gets parent_self = <remote tip>, parent_other = <local tip>.\n- The staged state's tree is derived from the local state (`state_current`).\n- `commit::weave_history` deserializes parent_self (remote tip), reads its delta block, and uses each `delta.node` id to index the staged state's file metadata blocks (`state.block_file_metadata(block_index)`).\n- Node ids are local to a state's tree, so a remote node id has no meaning in a local-derived tree. Here the id exceeds `tree.block_count`; when trees are similar ids stay in range and weave may silently write history onto unrelated nodes.\n- `weave_history` is identical in v0.9.0 and v0.10.1; v0.10.1 still passes `reverse_parents = true`.\n- Suggested fix: resolve each delta entry by path, or through the node mapping the merge already holds, when the staged tree was not derived from parent_self.\n### Component\nlore-revision (sync / merge / commit)\n### Regression?\nUnknown.",
+  "author": {
+   "login": "ethan-huo"
+  },
+  "createdAt": "2026-10-06T12:00:00Z",
+  "state": "CLOSED",
+  "stateReason": "completed",
+  "closedAt": "2026-10-16T12:00:00Z",
+  "labels": [],
+  "url": "https://github.com/epicgames/lore/issues/236",
+  "comments": [
+   {
+    "author": {
+     "login": "mjansson"
+    },
+    "createdAt": "2026-10-16T12:00:00Z",
+    "body": "This has been fixed on main branch."
+   }
+  ],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 235,
+  "title": "`--json revision history` prints a second `complete` from the user-name lookup",
+  "body": "Version: lore 0.10.0+1172-lore_v0.10.0__urc_main, Windows x86_64 release binary. On `main`, `resolve_revision_user_ids` still passes `output_formatter()` to the lookup.\n\nRepro: in an offline repository with LORE_USE_SERVICE=0:\n```\nlore --repository . --offline --local --non-interactive --json revision history\n```\nActual: exits 0. After the history's own `complete`, the user-name lookup prints its own `log` and `complete`. First line:\n```\n{\"tagName\":\"complete\",\"data\":{\"status\":0,\"error\":{\"errorCode\":0,\"message\":\"\",\"traceLocations\":[]}}}\n```\nThe lookup then emits a `log` event at error level from `lore_revision::relay` with \"No remote configured\" pointing to `auth.rs:701:59`. The final `complete` has status and errorCode 111, message \"No remote configured\", trace location lore\\src\\auth.rs line 701 column 59. [Full JSON lines not captured.]\n\nVariant: through a service with no `[server.auth]`, the status is 9 instead of 111.\n\nExpected: one `complete` per command, or a way to tell which call an event belongs to; currently the only way to tell is the `auth.rs` trace.",
+  "author": {
+   "login": "paq"
+  },
+  "createdAt": "2026-10-05T12:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "closedAt": null,
+  "labels": [],
+  "url": "https://github.com/epicgames/lore/issues/235",
+  "comments": [],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 225,
+  "title": "Obliterated fragments are resurrected when the same content is stored again",
+  "body": "Found on v0.10.0, still present on main at 4cc2a0d1c9119d694d21e5d8d5804cc1c1bbe1b7, self-hosted Linux server with local immutable and mutable stores.\n\n- `Obliterate` leaves a tombstone entry (`PayloadObliterated`, `pack_file: 0`, `size_content: 0`).\n- `store` later upgrades every entry sharing the new fragment's hash whose pack pointer differs, and tombstones always qualify.\n- Under `[profile.release]` (debug-assertions = true, panic = \"abort\") the assertion fires and the process aborts: restart loop of 16 restarts, exit 139, ~75 s per run.\n- Under `[profile.release-lto]` (debug-assertions = false) the assertion is compiled out, but the flag merge clears `PayloadObliterated`, so a deliberately obliterated fragment is revived with a real pack pointer and `size_content: 0`.\n- `store` already tolerates size mismatches against tombstones, but the same-hash upgrade does not. `oodle_migration` avoids the bug by skipping pack_file == 0 entries (`if entry.data.pack_file == 0 { continue; }`); the packstore-rewrite caller does not.\n- Reporter runs a local workaround and offers a PR. Probably rare on stock servers (obliteration only happens when eviction drops the last referencing fragment); routine for them because their collector obliterates by design.\n\n```\nWARN Overwriting obliterated fragment at 885fe1b5...-01a0cb18d8af...\nWARN Overwriting obliterated fragment for address: ffdb2f1d...-01a0cb18d860...\npanicked at lore-storage/src/local/immutable_store.rs:\nInvalid deduplication, content size do not match\n```\n```rust\nself.flags = (deduplicated.flags & !FragmentFlags::PayloadStored)\n    | (self.flags & FragmentFlags::PayloadStored);\n```\n```rust\nif self.flags & FragmentFlags::PayloadObliterated.bits() != 0 {\n    return;\n}\n```",
+  "author": {
+   "login": "goldyfruit"
+  },
+  "createdAt": "2026-09-22T12:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "closedAt": null,
+  "labels": [],
+  "url": "https://github.com/epicgames/lore/issues/225",
+  "comments": [],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 223,
+  "title": "repository delete reports a missing repository as an invalid name",
+  "body": "On lore v0.10.0, deleting a repository that doesn't exist shows a name validation error instead of a not-found error.\n\n```\n$ lore repository delete -f lore://<host>:41337/does-not-exist\n[Error] Not found\n  at lore-transport/src/error.rs:28:38\n  at lore-revision/src/repository/delete.rs:59 - Invalid repository name, can only contain alphanumerical characters and separators /-_\n```\n\nThe underlying gRPC response was correct: `grpc-status: 5, grpc-message: \"Repository does-not-exist not found\"`. `does-not-exist` is a valid name, so the message points to a naming problem that doesn't exist. While cleaning up several repositories, some deleted fine and others returned \"invalid name\", which looked like inconsistent validation. The real gRPC status was only visible with `-d`. Request: surface the not-found error and keep the name-validation message for names that actually fail validation.",
+  "author": {
+   "login": "goldyfruit"
+  },
+  "createdAt": "2026-09-21T12:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "closedAt": null,
+  "labels": [],
+  "url": "https://github.com/epicgames/lore/issues/223",
+  "comments": [],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 222,
+  "title": "max_size is compared against packstore size only, not total store size",
+  "body": "On v0.10.0, `immutable_store.local.max_size` is documented as \"Maximum total store size in bytes before background compaction reclaims space\", but the compactor compares it against `packstore_total_size()`, which only sums `group.packstore.total_size()`. Loose fragments and the index aren't counted.\n\nOn a store of 2.3 MB across 285 files:\n```\nPackstore compactor skipping, current size 1661 is below threshold 1048576\n```\nWith `max_size = 1 MiB`, the pass never ran even though the store was more than twice the cap. A store can exceed max_size on disk while the packstore stays under it, so compaction never fires and the cap has no effect.\n\nlore-storage/src/local/immutable_store.rs:\n```rust\npub async fn packstore_total_size(&self) -> usize {\n    let mut total_size = 0;\n    for group in self.group.iter() {\n        total_size += group.packstore.total_size().await.unwrap_or_default();\n    }\n    total_size\n}\n```\n`compact_packfiles` compares `total_size < max_size` to decide whether to run.\n\nProposed: either the trigger accounts for the whole store, or the docs state the cap applies only to the packstore.",
+  "author": {
+   "login": "goldyfruit"
+  },
+  "createdAt": "2026-09-21T12:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "closedAt": null,
+  "labels": [],
+  "url": "https://github.com/epicgames/lore/issues/222",
+  "comments": [],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 220,
+  "title": "Server store compaction destroys repositories and increases disk usage",
+  "body": "We're evaluating Lore as a Perforce replacement and ran into this while testing store GC on v0.10.0 (Linux, local immutable + mutable store, single server, no plugins).\n\nIf the store is bigger than `max_size`, a compaction pass leaves the repository unresolvable and disk usage goes up.\n\nSteps: started a server with no caps, pushed a repo, waited past the background flush, cloned it back (200/200 files, checksums matched). Then set this config and restarted:\n```\n[immutable_store.local]\npath = \"/data\"\nmax_size = 41943040        # 40 MB, the store had ~178 MB of packfiles\ncompaction_delay = 15000\ntarget_size_percentage = 70\n```\nResults: packfiles went from 178,344,518 bytes to 588,739 bytes; `du -sh /data` went from 181M to 259M; the repo now fails with `Failed to resolve repository`; the store has 65,539 files holding 1.8 MB of data, spread across ~256 MB of disk (one 4 KiB block per tiny file).\n\nLogs:\n```\nTruncated compacted packfile 1 to zero          (x199)\nPackstore compactor evicted 4 fragments, 274780 bytes for group 61\n```\nThe repo survived a restart before enabling compaction; a control run with no caps left it intact. At small scale the compactor skips with `Packstore compactor skipping, current size 1661 is below threshold`.",
+  "author": {
+   "login": "goldyfruit"
+  },
+  "createdAt": "2026-09-21T12:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "closedAt": null,
+  "labels": [],
+  "url": "https://github.com/epicgames/lore/issues/220",
+  "comments": [],
+  "linkedPullRequests": []
+ },
+ {
+  "number": 215,
+  "title": "`--dry-run clone` leaves a `.lore` directory behind when the destination already exists (regression in v0.10.0)",
+  "body": "### Lore version\nlore 0.10.0+1172-lore_v0.10.0__urc_main\n### Installation method\nPrebuilt release binary\n### Operating system / architecture\nWindows -- x86_64\n### Steps to reproduce\n`--dry-run` is documented as only reporting changes without modifying the local file system. Since v0.10.0, a dry-run clone into an existing directory initializes a repository there and leaves it behind. A destination that doesn't exist yet is cleaned up correctly. The dry run therefore blocks the real clone.\n\n```\nmkdir dest\nlore --dry-run clone lore://.../repo dest\n# exit 0\nls -A dest/.lore\n```\n\n```\nlore clone lore://.../repo dest\n# [Error] Repository already exist in path .../dest\n#   at lore-revision\\src\\repository\\clone.rs:864:24\n# exit != 0\n```\nv0.9.0 behaves correctly in all of these cases.\n### Expected vs actual behavior\nExpected: --dry-run should not change the file system / should not leave state in the file system. Actual: a `.lore` directory is left in the existing destination, causing the subsequent real clone to fail.\n### Component\nClient (CLI)\n### Server context\n_No response_\n### Regression?\nWorked in 0.9.0\n### Relevant logs or output\n_No response_",
+  "author": {
+   "login": "jochenhz"
+  },
+  "createdAt": "2026-09-18T12:00:00Z",
+  "state": "OPEN",
+  "stateReason": null,
+  "closedAt": null,
+  "labels": [
+   "bug",
+   "needs-triage"
+  ],
+  "url": "https://github.com/epicgames/lore/issues/215",
+  "comments": [],
+  "linkedPullRequests": []
+ }
+]

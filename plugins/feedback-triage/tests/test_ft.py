@@ -293,6 +293,14 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(pr("triage/sso-refresh"), 0)
         self.assertEqual(pr("someone-else:triage/sso-refresh"), 2)  # fork head: can't verify
         self.assertEqual(bash("gh pr create --head triage/sso-refresh --title x"), 0)
+        # internal ids never reach a PR
+        self.assertEqual(bash("gh pr create --head triage/sso-refresh --title 'FT-0001: SSO refresh'"), 2)
+        with open(os.path.join(self.e.dir, "body.md"), "w") as f:
+            f.write("Tracked as ft-0001\n")
+        self.assertEqual(bash("gh pr create --head triage/sso-refresh --title x --body-file body.md"), 2)
+        self.assertEqual(self.e.hook({"hook_event_name": "PreToolUse", "tool_name": "mcp__github__create_pull_request",
+                                      "tool_input": {"head": "triage/sso-refresh", "title": "x",
+                                                     "body": "FT-0001"}}).returncode, 2)
         # attacks: another commit pushed under the reviewed name, force, renames, --all, case games
         other = self.commit_on("main")
         self.assertEqual(bash(f"git push origin {other}:triage/sso-refresh"), 2)
@@ -373,6 +381,22 @@ class Lifecycle(unittest.TestCase):
         self.assertIn("Fix ready on a reviewed branch (no PR opened yet)", text)
         self.assertNotIn("FT-0001", text)
         self.assertEqual(out["held"], [])
+
+    def test_handoff_steps_render_with_our_fix(self):
+        self.e.run("claim")  # then refuse an id, an over-long step, a non-list
+        res = {"id": self.id, "status": "DONE", "complexity": {"tier": "low", "rationale": "r"},
+               "repro": "reproduced", "investigation_file": self.inv, "branch": "triage/sso-refresh"}
+        for h in (["Sign off as FT-0001"], ["x " * 30], "not a list"):
+            self.assertEqual(self.e.run("investigated", "--json", json.dumps(dict(res, handoff=h)),
+                                        ok=False).returncode, 1)
+        self.e.j("investigated", "--json", json.dumps(dict(res, handoff=[
+            "Add your Signed-off-by to the commit", "Write the PR description yourself"])))
+        self.e.j("review", self.id, "--verdict", "approved", "--notes", "ok", "--commit", "abc1234")
+        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, fix=FIX)))
+        _, text = self.render_one()
+        self.assertIn("**Before you merge:** Add your Signed-off-by to the commit. Write the PR description "
+                      "yourself.", text)
+        self.assertLess(text.index("Before you merge"), text.index("## Sources"))
 
     def test_low_tier_gate_and_fix_ready_report(self):
         head = self.git_branch("triage/sso-refresh", push=True)

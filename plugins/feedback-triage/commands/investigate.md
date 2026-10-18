@@ -49,11 +49,13 @@ earlier findings). Per ticket:
    --verdict changes --notes … --downgrade` and `wt remove <ID>` (branch kept). The
    ticket returns as `needs-reinvestigation`; the next claim must classify it
    medium with the attempt as one option.
-3. Approved, `investigate.open_prs` true, no `--no-pr`: `git -C <worktree> push -u
+3. Approved, `investigate.open_prs` true, no `--no-pr`, and no `handoff` step saying
+   the project needs a person to write or sign the PR (human-written description,
+   sign-off on every commit): `git -C <worktree> push -u
    origin <branch>`; open the PR (`gh pr create` or GitHub MCP) against base, draft
-   if `investigate.draft_prs`, title `<ID>: <title>`, body from
+   if `investigate.draft_prs`, title = the ticket title (no internal id), body from
    [pr-body.md](../templates/pr-body.md); `ft pr <ID> --url <url>`; `wt remove <ID>`.
-   Otherwise `wt remove <ID>` (branch stays local). The hook refuses push/PR unless
+   Otherwise `wt remove <ID>` (branch stays local; the report names the handoff). The hook refuses push/PR unless
    the ticket is low with an approved review — fix the state, never bypass.
 
 ## 5. Validate, persist, summarise

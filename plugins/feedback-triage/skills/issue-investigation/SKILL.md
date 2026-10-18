@@ -52,7 +52,10 @@ recommend one in one sentence.
 
 Bug: the repro becomes a failing test first; watch it fail; fix the cause; watch
 it pass; run the full suite. Feature: a test per acceptance criterion, then the
-smallest implementation. Commit on the branch referencing the upstream issue ("Fixes #431"), never the internal FT id. **Never push or
+smallest implementation. Follow the project's contribution rules (CONTRIBUTING.md,
+PR template: tests, lint, format, commit style). A rule only a person can meet
+(DCO `Signed-off-by`, CLA, a human-written PR description, AI disclosure) — never
+fake it; put it in `handoff`. Commit on the branch referencing the upstream issue ("Fixes #431"), never the internal FT id. **Never push or
 open a PR** — the orchestrator does that after independent review. Outgrowing the
 low rules mid-way → re-classify medium and keep the attempt as an option.
 
@@ -74,6 +77,7 @@ recommendation. "Not reproduced after X, Y, Z" is a finding.
  "existing_pr": {"url": "…", "verdict": "fixes|partial|wrong|unverified"},
  "investigation_file": "<path>", "type": "<only if corrected>",
  "branch": "<low, built>", "worktree": "<low, built>", "commit": "<low, built>",
+ "handoff": ["<low, built: what a person must do before merge, per the project's rules>"],
  "concerns": "<or null>"}
 ```
 
