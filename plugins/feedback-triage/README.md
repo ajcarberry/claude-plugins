@@ -72,37 +72,31 @@ friendly intro says where it came from, and it reads in one of two ways — a
 **proposed fix** that is ready to merge (a linked upstream PR we tested, or our
 own independently reviewed change). Internal queue ids never appear.
 
-A real one, from the evaluation run on `python-humanize/humanize` issue #431:
+A real one, from the evaluation run on `epicgames/lore` issue #241 (a researched
+report; a fix-ready one adds **Proposed fix**, the review link, and any
+**Before you merge** steps the project's CONTRIBUTING.md leaves to a person):
 
 ````markdown
-# intcomma shows large and tiny floats in scientific notation
+# lore status --scan silently drops a delete/modify merge conflict
 
-👋 Hi team! This report comes from our feedback triage, which keeps an eye on GitHub issues and Slack for bug reports and feature requests. People ran into this one, we did the digging, and there's a fix we're confident is ready to merge.
+👋 Hi team! This report comes from our feedback triage, which keeps an eye on GitHub issues and Slack for bug reports and feature requests. People ran into this one, so we did the digging for you: what's happening, why, and what we know so far.
 
-**Type:** Bug · **Status:** Fix ready: an open upstream PR fixes it (we tested it) · **Reproduced:** Yes · **Reported by:** 3 people
+**Type:** Bug · **Status:** Researched: fix approaches outlined, needs a decision · **Reproduced:** Yes · **Reported by:** 1 person
 
 ## What's happening
 
-Users who pass floats of 1e16 or more, or below 1e-4, to `intcomma` see '1e+16' with no commas. A revenue dashboard and a billing page show this.
+A user merges a branch that edits a file the current branch deleted, then runs `lore status --scan`. The conflict disappears, the commit succeeds, and the other branch's edit vanishes with no prompt.
 
 ## What we found
 
-- We reproduced it on main: `intcomma(1e16)` returns '1e+16' and `intcomma(1e-05)` returns '1e-05'.
-- `intcomma` formats floats with `f"{value:,}"`, which uses exponent notation at 1e16 or more, or below 1e-4.
-- Open PR #449 also fixes it but duplicates PR #432, and it adds about 1.1 µs to every float call.
-- Both PRs leave the string input '1e20' unchanged, which is outside the reported float case.
-
-## Proposed fix
-
-PR #432 adds a branch in `intcomma` that expands exponent floats with `Decimal` before grouping. It fixes every reported case, passes the full suite on main (856 passed), and changes no output in 300,140 fuzzed floats. Check CI and review state before merging, because we could not read them.
-
-Review it here: https://github.com/python-humanize/humanize/pull/432
+- We reproduced it on main: merge, run `lore status --scan`, then commit; the commit drops the edit.
+- `diff_filesystem_missing_nodes` discards a merge-staged file missing on disk, and `commit_child` skips the conflict check for staged deletes.
+- Versions 0.9.0 to 0.10.1 fail; a path-limited scan or a deleted modify/modify file also skips the conflict check.
+- Fix A (recommended) guards the scan discard and the commit; fix B skips merge-staged nodes in all scan walks.
 
 ## Sources
 
-- GitHub python-humanize/humanize#431 (TheNetherWatcher): https://github.com/python-humanize/humanize/issues/431
-- Slack #app-feedback (nadia): https://acme.slack.com/archives/C0APPDEV/p1791100000000100
-- Related PR (open): https://github.com/python-humanize/humanize/pull/449
+- GitHub epicgames/lore#241 (KasparsSverns): https://github.com/epicgames/lore/issues/241
 ````
 
 Layout and wording live in `templates/report/report.md` and `theme.json`;
