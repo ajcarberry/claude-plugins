@@ -365,6 +365,15 @@ class Lifecycle(unittest.TestCase):
         self.e.j("recheck-apply", "--json", json.dumps({"id": self.id, "verdict": "resolved", "evidence": ["x"]}))
         self.assertEqual(pr("triage/sso-refresh"), 2)
 
+    def test_legacy_branch_with_id_is_not_printed(self):
+        self.investigate(tier="low", branch="ft/FT-0001-old-style")
+        self.e.j("review", self.id, "--verdict", "approved", "--notes", "ok", "--commit", "abc1234")
+        self.e.j("report-set", self.id, "--json", json.dumps(dict(GOOD_REPORT, fix=FIX)))
+        out, text = self.render_one()
+        self.assertIn("Fix ready on a reviewed branch (no PR opened yet)", text)
+        self.assertNotIn("FT-0001", text)
+        self.assertEqual(out["held"], [])
+
     def test_low_tier_gate_and_fix_ready_report(self):
         head = self.git_branch("triage/sso-refresh", push=True)
         self.investigate(tier="low", branch="triage/sso-refresh")

@@ -3,14 +3,18 @@
     "report": "👋 Hi team! This report comes from our feedback triage, which keeps an eye on GitHub issues and Slack for bug reports and feature requests. People ran into this one, so we did the digging for you: what's happening, why, and what we know so far.",
     "fix": "👋 Hi team! This report comes from our feedback triage, which keeps an eye on GitHub issues and Slack for bug reports and feature requests. People ran into this one, we did the digging, and there's a fix we're confident is ready to merge."
   },
-  "type": { "bug": "Bug", "feature": "Feature request" },
+  "type": {
+    "bug": "Bug",
+    "feature": "Feature request"
+  },
   "status": {
     "fix_existing": "Fix ready: an open upstream PR fixes it (we tested it)",
     "fix_ours": "Fix ready: PR open, independently reviewed",
     "fix_branch": "Fix ready on branch `{branch}`, independently reviewed (no PR opened yet)",
     "low": "Researched: small, contained fix",
     "medium": "Researched: fix approaches outlined, needs a decision",
-    "high": "Researched: needs an engineer to dig deeper"
+    "high": "Researched: needs an engineer to dig deeper",
+    "fix_branch_unnamed": "Fix ready on a reviewed branch (no PR opened yet)"
   },
   "repro": {
     "reproduced": "Yes",
@@ -18,6 +22,13 @@
     "not-reproduced": "No",
     "not-attempted": "Not tried"
   },
-  "source": { "github": "GitHub", "slack": "Slack", "other": "Source", "pr": "Related PR" },
-  "labels": { "review": "Review it here:" }
+  "source": {
+    "github": "GitHub",
+    "slack": "Slack",
+    "other": "Source",
+    "pr": "Related PR"
+  },
+  "labels": {
+    "review": "Review it here:"
+  }
 }

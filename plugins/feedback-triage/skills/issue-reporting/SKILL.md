@@ -1,6 +1,6 @@
 ---
 name: issue-reporting
-description: Use when writing a feedback-triage report for the engineering team's issue tracker (Jira, Linear, GitHub, …) — summarising an investigated ticket into headline/what/findings/fix/ask prose, applying ASD-STE100 / ELI18 style, or fixing text that ft.py lint rejected.
+description: Use when writing a feedback-triage report for the engineering team's issue tracker (Jira, Linear, GitHub, …) — summarising an investigated ticket into headline/what/findings/fix prose, applying ASD-STE100 / ELI18 style, or fixing text that ft.py lint rejected.
 ---
 
 # Issue Reporting — A Ticket an Engineer Can Pick Up Cold
@@ -28,10 +28,9 @@ issue by its title or GitHub number. Lint refuses ids.
 | `what` | ≤ 2 sentences | who hits it, when, what they see (feature: what they want and why) |
 | `findings` | 1–4 items, ≤ 20 words each | verified facts, most decisive first: repro (with the inputs/flags needed), root cause (`fn` in backticks), scope, prior art, other PRs and their state; for medium tickets, the fix approaches in one line each |
 | `fix` | fix-ready only, ≤ 3 sentences | what the fix changes, the evidence it works, and the one thing to check before merging. A PR named here must be the linked fix PR |
-| `ask` | 1 sentence, optional | the one decision only a human can make |
 
-Only facts from the investigation file. A conflict with a related ticket goes in
-`ask`, naming that issue by title.
+Only facts from the investigation file. A conflict with a related ticket, or a
+decision the team must make, is one finding that names the related issue by title.
 
 ## Style — ASD-STE100, written for a smart 18-year-old
 

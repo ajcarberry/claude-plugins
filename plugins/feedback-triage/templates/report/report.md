@@ -22,12 +22,6 @@
 {{fix_link}}
 {{/fix}}
 
-{{#ask}}
-## Open question
-
-{{ask}}
-{{/ask}}
-
 ## Sources
 
 - {{sources[]}}

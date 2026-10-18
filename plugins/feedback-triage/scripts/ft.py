@@ -378,7 +378,6 @@ LIMITS = {  # field: (max words per sentence, max sentences, max total words)
     "what": (20, 2, 40),
     "finding": (20, 1, 20),
     "fix": (25, 3, 60),
-    "ask": (20, 1, 20),
 }
 
 
@@ -460,11 +459,7 @@ def lint_report(report, fix_ready, pr_numbers=None):
         if pr_numbers is not None and named - pr_numbers:
             errs.append(f"fix names PR #{', #'.join(sorted(named))} but the report links "
                         f"PR #{', #'.join(sorted(pr_numbers)) or 'none'} — they must agree")
-    if report.get("ask"):
-        e, w = lint_text("ask", report["ask"])
-        errs += e
-        warns += w
-    extra = set(report) - {"headline", "what", "findings", "fix", "ask"}
+    extra = set(report) - {"headline", "what", "findings", "fix"}
     if extra:
         errs.append(f"unknown report fields: {sorted(extra)}")
     return errs, warns
@@ -568,7 +563,10 @@ def ticket_values(t, theme):
     elif kind == "ours":
         status, link = theme["status"]["fix_ours"], inv["pr_url"]
     elif kind == "branch":
-        status, link = theme["status"]["fix_branch"].replace("{branch}", inv["branch"]), ""
+        # branches made before ids were dropped from names (ft/FT-0001-…) are not printed
+        status = theme["status"]["fix_branch_unnamed"] if INTERNAL_ID.search(inv["branch"]) else \
+            theme["status"]["fix_branch"].replace("{branch}", inv["branch"])
+        link = ""
     else:
         status, link = theme["status"][tier], ""
     sources = [source_line(s, theme) for s in t["sources"]]
@@ -591,7 +589,6 @@ def ticket_values(t, theme):
         "findings": rep["findings"],
         "fix": rep.get("fix") or "",
         "fix_link": f"{theme['labels']['review']} {link}" if link and rep.get("fix") else "",
-        "ask": rep.get("ask") or "",
         "sources": sources,
     }
 
@@ -1284,7 +1281,7 @@ def cmd_report_set(args, st):
         if errs:
             emit({"id": tid, "ok": False, "errors": errs, "warnings": warns})
             sys.exit(2)
-        t["report"] = {k: report[k] for k in ("headline", "what", "findings", "fix", "ask") if report.get(k)}
+        t["report"] = {k: report[k] for k in ("headline", "what", "findings", "fix") if report.get(k)}
         history(t, "report-written", opt(args, "--actor") or "report")
         st.put(t)
     emit({"id": tid, "ok": True, "warnings": warns})
@@ -1355,15 +1352,22 @@ def cmd_render(args, st):
     while any(os.path.exists(os.path.join(st.dir, "reports", box, run)) for box in ("outbox", "sent")):
         n += 1
         run = now().strftime("%Y%m%dT%H%M%SZ") + f"-{n}"
-    outdir = os.path.join(st.dir, "reports", "outbox", run)
-    os.makedirs(outdir, exist_ok=True)
     tpl = load_template(st.root, "report.md")
-    files, texts = [], []
-    for n, t in enumerate(tickets, 1):
+    rendered, held = [], []
+    for t in tickets:
         text = fill(tpl, ticket_values(t, theme))
         leak = INTERNAL_ID.search(text)
-        if leak:  # deterministic guard: internal ids never reach a report
-            raise Blocked(f"{t['id']}: rendered report contains internal id {leak.group(0)} — fix the prose or branch name")
+        if leak:  # deterministic guard: internal ids never reach a report; hold this one, render the rest
+            held.append({"id": t["id"], "title": t["title"], "reason": f"would show internal id {leak.group(0)}"})
+            continue
+        rendered.append((t, text))
+    if not rendered and not closed_ids:
+        emit({"run": None, "files": [], "held": held, "note": "nothing renderable"})
+        return
+    outdir = os.path.join(st.dir, "reports", "outbox", run)
+    os.makedirs(outdir, exist_ok=True)
+    files, texts = [], []
+    for n, (t, text) in enumerate(rendered, 1):
         slug = re.sub(r"[^a-z0-9]+", "-", t["report"]["headline"].lower()).strip("-")[:50]
         path = os.path.join(outdir, f"{n:02d}-{slug}.md")
         with open(path, "w") as f:
@@ -1383,7 +1387,7 @@ def cmd_render(args, st):
             os.replace(os.path.join(st.dir, "reports", "outbox", old),
                        os.path.join(st.dir, "reports", "superseded", old))
     every = st.all()
-    emit({"run": run, "dir": os.path.relpath(outdir, st.root),
+    emit({"run": run, "dir": os.path.relpath(outdir, st.root), "held": held,
           "all": os.path.relpath(os.path.join(outdir, "all-reports.md"), st.root),
           "files": [f for f in files if f["kind"] == "ticket"],
           "closed": [{"title": st.get(c)["title"], "fixed_by": (st.get(c).get("verification") or {}).get("fixed_by")}
