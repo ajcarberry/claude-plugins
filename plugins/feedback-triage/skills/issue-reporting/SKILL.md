@@ -27,7 +27,7 @@ issue by its title or GitHub number. Lint refuses ids.
 | `headline` | ≤ 12 words, no end punctuation | the user-visible problem or want — becomes the ticket title |
 | `what` | ≤ 2 sentences | who hits it, when, what they see (feature: what they want and why) |
 | `findings` | 1–4 items, ≤ 20 words each | verified facts, most decisive first: repro (with the inputs/flags needed), root cause (`fn` in backticks), scope, prior art, other PRs and their state; for medium tickets, the fix approaches in one line each |
-| `fix` | fix-ready only, ≤ 3 sentences | what the fix changes, the evidence it works, and the one thing to check before merging. A PR named here must be the linked fix PR |
+| `fix` | fix-ready only, ≤ 3 sentences | what the fix changes, the evidence it works, and the one thing to check before merging (never a `handoff` step: the template prints those). A PR named here must be the linked fix PR |
 
 Only facts from the investigation file. A conflict with a related ticket, or a
 decision the team must make, is one finding that names the related issue by title.

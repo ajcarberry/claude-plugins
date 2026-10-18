@@ -81,7 +81,7 @@ JSON
     run_claude "/feedback-triage:investigate ${*:-} --no-pr"
     FT_PROJECT_DIR="$WD" python3 "$PLUGIN/scripts/ft.py" list ;;
   report)
-    run_claude "/feedback-triage:report"
+    run_claude "/feedback-triage:report --unattended"
     python3 "$HERE/score_reports.py" "$WD" ;;
   recheck)
     run_claude "/feedback-triage:recheck --all"

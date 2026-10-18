@@ -365,7 +365,7 @@ BANNED = {
     "it should be noted": None, "going forward": None, "at this point in time": "now",
     "a number of": "some", "etc": None,
 }
-HEDGES = ("might possibly", "could potentially", "it seems like", "sort of", "kind of")
+HEDGES = ("might possibly", "could potentially", "it seems like", "sort of", "kind of", "probably")
 PASSIVE = re.compile(r"\b(?:is|are|was|were|be|been|being)\s+(?:\w+ly\s+)?(?:\w+ed|broken|written|taken|"
                      r"given|shown|seen|known|chosen|hidden|driven|frozen|forgotten|done|made|sent|"
                      r"built|found|kept|left|lost|held|told|caught|paid)\b", re.I)

@@ -118,3 +118,31 @@ replaced by an optional "Proposed fix" that exists only when a fix is ready to
 merge, and internal ids blocked by lint and by the renderer. Re-running the report
 phase on the iteration-3 real-world queue: 9 reports, 5 fix-ready, 0 lint errors,
 0 shape problems, 0 internal ids, $1.84.
+
+### Round 3 — Lore (`lore/`), the first project the plugin was not tuned on
+
+One pass: intake → investigate (four runs, three ended by the sandbox) → report,
+with an independent fact-check of every investigation.
+
+| | Result |
+|---|---|
+| Intake coverage / dedup precision / recall / noise / types | 1.0 / 1.0 / 1.0 / 3 of 3 / 11 of 11 ($0.70) |
+| Fixed on main, found (#238, #225) / wrongly claimed | 2 of 2 / 0 |
+| Tiers within the acceptable set | 7 of 7 investigated (2 not reached: disk) |
+| Investigation claims checked / wrong / imprecise | 211 / 0 / 18 |
+| Fixes built and approved / judged sound by the fact-check | 2 / 2 (one later downgraded by a process bug, now fixed) |
+| Reports: lint errors / shape problems / internal ids | 0 / 0 / 0 (7 reports, $1.04) |
+
+What Lore broke, all fixed: headless runs exited with background investigators
+still running; 8 parallel Rust builds filled the disk; an investigator waited on a
+background build it was never woken for; a correct fix was downgraded over a
+release-note nit the orchestrator itself added; `--downgrade` left the tier at low
+and review notes were overwritten; environment failures counted against tickets;
+CONTRIBUTING.md rules (DCO sign-off, human-written PR descriptions) were ignored —
+now `handoff` steps under the proposed fix; PR titles carried internal ids.
+
+Open: each ticket worktree recompiles the whole Rust workspace (≈ 5 GB), more
+than this sandbox's ≈ 40 GB allowance holds across a run — real deployments need
+a shared compiler cache (sccache) or `max_parallel: 1`. Bugs an investigator finds
+along the way (Lore: `--force --dry-run clone` deletes `.lore`) have no path into
+the queue yet.
