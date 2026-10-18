@@ -56,7 +56,9 @@ Slack ──┘   dedup +    (internal  per ticket:      one Markdown           
   loads only what it acts on (≈ 0.5–4k tokens of instructions).
 - **Hooks** (`scripts/hook.py`, PreToolUse, deterministic file checks):
   no direct edits to queue files; no push/PR of a triage branch (`triage/*`) unless
-  its ticket is low tier with an approved independent review. Escape hatch:
+  its ticket is low tier with an approved independent review, and only for the
+  exact commit the reviewer approved (checked on the remote for PRs). Pushes or PR
+  calls it cannot parse are blocked while triage branches exist. Escape hatch:
   `FT_SKIP_GATE=1`.
 
 References: [queue-schema](references/queue-schema.md) ·
@@ -144,6 +146,13 @@ cron running `/feedback-triage:sweep` for the team. See
 [scheduling.md](references/scheduling.md).
 
 ## Known limits
+
+- **The PR gate is a guardrail, not a security boundary.** It stops an honest agent
+  from shipping an unreviewed change by mistake, and fails closed on commands it
+  can't parse, but any process with a shell can reach git another way (a renamed
+  binary, a script file, the GitHub API with a token). Keep the real boundary
+  server-side: triage PRs open as drafts, and use branch protection with required
+  human review on the base branch.
 
 - **One writer at a time per queue.** `state.persist: branch` merges by git
   rebase. Overlapping runners (e.g. a CI recheck during a laptop investigate) can

@@ -5,6 +5,11 @@
 2. A feedback-triage branch (<branch_prefix>*, default triage/) is pushed or opened as a PR only when the
    ticket is low complexity AND its change passed the independent change-reviewer.
 
+This is a guardrail against honest mistakes, not a security boundary: an agent with a
+shell can always reach git another way. It therefore fails closed — a push or PR it
+cannot positively parse is blocked while triage branches exist. The real boundary is
+server-side: draft PRs, branch protection, and human review before merge.
+
 Exit 0 = allow, exit 2 = block (stderr goes to Claude).
 Escape hatch (rare, deliberate): FT_SKIP_GATE=1 in the environment.
 """
@@ -101,6 +106,27 @@ def strip_ref(name):
     return re.sub(r"^refs/heads/", "", name, flags=re.I)
 
 
+def triage_branches_exist(st, where):
+    local = git(where, "for-each-ref", "--format=%(refname:short)", "refs/heads/").split()
+    return any(is_triage(st, b) for b in local)
+
+
+def remote_owner(st, where):
+    url = git(where, "remote", "get-url", st.cfg["state"]["remote"])
+    m = re.search(r"github\.com[:/]([^/]+)/", url)
+    return m.group(1).lower() if m else ""
+
+
+def check_head(st, head, where):
+    """PR head: 'branch' or 'owner:branch'. Fork heads cannot be verified → blocked."""
+    owner, _, branch = head.rpartition(":")
+    if not is_triage(st, branch):
+        return
+    if owner and owner.lower() != remote_owner(st, where):
+        block(f"PR head {head} is not on the configured remote — triage PRs come from our own branch.")
+    gate_branch(st, branch, remote=True)
+
+
 def check_push(st, args, where):
     """args: everything after `git … push`."""
     force, everything, pos = False, False, []
@@ -123,8 +149,13 @@ def check_push(st, args, where):
             block("--all/--mirror would push triage branches without the per-branch review check.")
         return
     current = git(where, "branch", "--show-current")
+    if not pos[1:] and is_triage(st, current):
+        block(f"name the destination when pushing triage branch {current} "
+              f"(git push <remote> {current}) — the implicit target depends on config.")
     refspecs = pos[1:] or [current]
     for r in refspecs:
+        if any(c in r for c in "*?[") and triage_branches_exist(st, where):
+            block(f"wildcard refspec {r} could include triage branches — push branches by name.")
         plus = r.startswith("+")
         r = r.lstrip("+")
         src, dst = r.split(":", 1) if ":" in r else (r, r)
@@ -146,15 +177,30 @@ def check_push(st, args, where):
         gate_branch(st, dst, commit=sha)
 
 
+GIT_RE = re.compile(r"(?:^|/)git$")
+GH_RE = re.compile(r"(?:^|/)gh$")
+WRAPPERS = {"env", "command", "builtin", "nice", "nohup", "time", "exec", "sudo", "xargs"}
+OPAQUE = re.compile(r"\$\(|`|\beval\b|\b(?:ba|z|da|k)?sh\s+-c\b|\bsource\b|^\.\s|\balias\.")
+
+
 def check_bash(st, cmd, cwd):
     if not PUSH_OR_PR.search(cmd):
         return
-    where = cwd
+    if OPAQUE.search(cmd) and triage_branches_exist(st, cwd):
+        block("this command hides what it runs (subshell, eval, sh -c, alias) and mentions push/PR — "
+              "run git/gh directly so the gate can check it.")
+    where, checked = cwd, False
     for toks in segments(cmd):
+        while toks and toks[0] in WRAPPERS:
+            toks = toks[1:]
+            while toks and (toks[0].startswith("-") or "=" in toks[0]):
+                toks = toks[1:]
+        if not toks:
+            continue
         if toks[0] in ("cd", "pushd") and len(toks) > 1:
             where = os.path.join(where, toks[1]) if not os.path.isabs(toks[1]) else toks[1]
             continue
-        if toks[0] == "git":
+        if GIT_RE.search(toks[0]):
             j, here = 1, where
             while j < len(toks) and toks[j].startswith("-"):
                 if toks[j] in ("-C", "-c"):
@@ -165,21 +211,42 @@ def check_bash(st, cmd, cwd):
                     j += 1
             if j < len(toks) and toks[j] == "push":
                 check_push(st, toks[j + 1:], here)
-        elif toks[0] == "gh" and toks[1:3] == ["pr", "create"]:
+            checked = True  # a parsed git command: either checked, or not a push
+        elif GH_RE.search(toks[0]) and len(toks) > 1 and toks[1] == "pr" and toks[2:3] != ["create"]:
+            checked = True  # gh pr view/list/…: not a PR creation
+        elif GH_RE.search(toks[0]) and toks[1:3] == ["pr", "create"]:
             head = None
             for k, t in enumerate(toks):
                 if t in ("--head", "-H") and k + 1 < len(toks):
                     head = toks[k + 1]
-                elif t.startswith("--head="):
+                elif t.startswith(("--head=", "-H=")):
                     head = t.split("=", 1)[1]
-            head = (head or git(where, "branch", "--show-current")).split(":")[-1]
-            if is_triage(st, head):
-                gate_branch(st, head, remote=True)
-        elif toks[0] == "gh" and len(toks) > 1 and toks[1] == "api":
-            for t in toks:
-                m = re.match(r"head=(.+)", t)
-                if m and is_triage(st, m.group(1).split(":")[-1]):
-                    gate_branch(st, m.group(1).split(":")[-1], remote=True)
+            check_head(st, head or git(where, "branch", "--show-current"), where)
+            checked = True
+        elif GH_RE.search(toks[0]) and len(toks) > 1 and toks[1] == "api":
+            text = " ".join(toks)
+            if not re.search(r"\bpulls\b|graphql", text):
+                checked = True
+                continue
+            if re.search(r"--input\b|graphql", text):
+                if triage_branches_exist(st, where):
+                    block("gh api --input / graphql PR calls can't be checked — use gh pr create.")
+                checked = True
+                continue
+            heads = []
+            for k, t in enumerate(toks):
+                val = None
+                if t in ("-f", "-F", "--field", "--raw-field") and k + 1 < len(toks):
+                    val = toks[k + 1]
+                elif re.match(r"--(?:raw-)?field=", t):
+                    val = t.split("=", 1)[1]
+                if val and val.startswith("head="):
+                    heads.append(val[5:])
+            for h in heads:
+                check_head(st, h, where)
+            checked = True
+    if not checked and triage_branches_exist(st, cwd):
+        block("could not parse this push/PR command — run git push / gh pr create directly so the gate can check it.")
 
 
 def main():
@@ -208,9 +275,7 @@ def main():
         if "FT_SKIP_GATE=1" not in cmd:
             check_bash(st, cmd, cwd)
     elif re.search(r"create_pull_request", tool):
-        head = (ti.get("head") or "").split(":")[-1]
-        if is_triage(st, head):
-            gate_branch(st, head, remote=True)
+        check_head(st, ti.get("head") or "", cwd)
     return 0
 
 

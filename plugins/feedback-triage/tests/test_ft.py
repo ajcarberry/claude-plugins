@@ -290,7 +290,8 @@ class Lifecycle(unittest.TestCase):
                                     "tool_input": {"head": h}}).returncode
         self.assertEqual(pr("triage/sso-refresh"), 2)
         subprocess.run(["git", "-C", self.e.dir, "push", "-q", "origin", "triage/sso-refresh"], check=True)
-        self.assertEqual(pr("acme:triage/sso-refresh"), 0)
+        self.assertEqual(pr("triage/sso-refresh"), 0)
+        self.assertEqual(pr("someone-else:triage/sso-refresh"), 2)  # fork head: can't verify
         self.assertEqual(bash("gh pr create --head triage/sso-refresh --title x"), 0)
         # attacks: another commit pushed under the reviewed name, force, renames, --all, case games
         other = self.commit_on("main")
@@ -302,6 +303,21 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(bash("git push --all origin"), 2)
         self.assertEqual(bash("FOO=1 git -c x.y=z push origin " + other + ":TRIAGE/sso-refresh"), 2)
         self.assertEqual(pr("TRIAGE/other"), 2)
+        # fail closed on what the gate cannot see through
+        for hidden in ("sh -c 'git push origin triage/sso-refresh'", "eval git push origin triage/sso-refresh",
+                       "git push origin $(git rev-parse main):triage/sso-refresh",
+                       "git -c alias.p=push p origin triage/sso-refresh",
+                       "git push origin 'refs/heads/*:refs/heads/*'",
+                       "gh api repos/acme/app/pulls --input body.json"):
+            self.assertEqual(bash(hidden), 2, hidden)
+        self.assertEqual(bash("env GIT_TRACE=0 /usr/bin/git push origin " + other + ":triage/sso-refresh"), 2)
+        self.assertEqual(bash("gh api repos/acme/app/pulls -f head=triage/other -f base=main"), 2)
+        subprocess.run(["git", "-C", self.e.dir, "checkout", "-q", "triage/sso-refresh"], check=True)
+        self.assertEqual(bash("git push"), 2)  # implicit destination from a triage branch
+        subprocess.run(["git", "-C", self.e.dir, "checkout", "-q", "main"], check=True)
+        # ordinary commands that merely mention push are not caught
+        for fine in ("git log --grep push", "gh pr view 3", "git push origin main"):
+            self.assertEqual(bash(fine), 0, fine)
         # a commit added after the review is not what the reviewer approved
         self.commit_on("triage/sso-refresh")
         self.assertEqual(bash("git push origin triage/sso-refresh"), 2)
