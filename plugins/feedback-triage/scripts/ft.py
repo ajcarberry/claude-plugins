@@ -1053,7 +1053,8 @@ def cmd_release(args, st):
     reason = opt(args, "--reason") or "released"
     with st.lock():
         t = st.get(tid)
-        attempts = int(t["investigation"].get("attempts") or 0) + 1  # failures only
+        # failures of the ticket only: --infra (disk full, run killed, network) counts nothing
+        attempts = int(t["investigation"].get("attempts") or 0) + (0 if "--infra" in args else 1)
         t["investigation"]["attempts"] = attempts
         target = "blocked" if attempts >= 2 or "--blocked" in args else "new"
         transition(t, target, "investigate", reason)

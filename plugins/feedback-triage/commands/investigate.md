@@ -22,8 +22,9 @@ once, so other runners see the claims. Run dir `<runs>/investigate-<UTC ts>/`.
 
 ## 2. Dispatch (waves of at most `investigate.max_parallel`)
 
-Start the next ticket only when a slot frees, and **never end the turn while an
-investigator or reviewer is still running** — a headless run kills it. Tickets listed in each other's `related` go one after another (later ones can read
+Dispatch each wave as foreground subagent calls (`run_in_background: false`) sent
+in one message, so they run in parallel and the turn waits for them — a headless
+run that ends its turn kills background subagents. Tickets listed in each other's `related` go one after another (later ones can read
 earlier findings). Per ticket:
 1. `wt create <ID> <slug of title>` → worktree (runs `investigate.setup` if set).
 2. `bug-investigator` (bug) or `feature-analyst` (feature) with: ticket path,
@@ -34,7 +35,8 @@ earlier findings). Per ticket:
 ## 3. Apply
 
 - `BLOCKED` / no result → `ft release <ID> --reason "<concern>"` (2nd failure →
-  `blocked`); `wt discard <ID>`.
+  `blocked`; add `--infra` when the environment failed — disk, network, killed —
+  not the ticket); `wt discard <ID>`.
 - `DONE` → `ft investigated --json <result>`. Exit 1 → redispatch once with the
   error text; still refused → release.
 - No branch built (high, medium, or an existing PR covers it) → `wt discard <ID>`.
@@ -42,7 +44,7 @@ earlier findings). Per ticket:
 
 ## 4. Low tier — independent review, then change request
 
-1. `change-reviewer` with ticket, investigation, worktree, branch, base.
+1. `change-reviewer` (foreground) with ticket, investigation, worktree, branch, base.
 2. `approved` → `ft review <ID> --verdict approved --notes "<one line>" --commit
    $(git -C <worktree> rev-parse HEAD)` (the gate only lets that exact commit out).
    `changes` → record it, redispatch the investigator with `revise` = the notes,

@@ -14,7 +14,7 @@ only, through `ft recheck-apply`.
    `--all` → `ft due recheck --min-age-hours 0`; else `ft due recheck`. Nothing due
    → print `Recheck: nothing due.` and **STOP** (no save).
 2. Run dir `<runs>/recheck-<UTC ts>/`. Dispatch one `ticket-verifier` per ticket in
-   parallel with: ticket path, investigation path if any, base branch, export
+   parallel (foreground calls in one message) with: ticket path, investigation path if any, base branch, export
    paths of sources configured with `export`, `out` = `<run dir>/verdict-<ID>.json`.
 3. `ft recheck-apply --json <file>` per verdict. Exit 1 → redispatch that verifier
    once with the error text. Exit 2 → don't retry; `ft log recheck-refused --id <ID>

@@ -23,7 +23,7 @@ only queue writer; queue files are never edited by hand.
 Per source: `ft watermark get <source>`. Window `from` = watermark −
 `intake.overlap_hours` (overlap is safe: the ledger is idempotent); no watermark →
 `first_run: true`, `from` = now − `intake.lookback_days`; `--since` overrides.
-Dispatch one `source-reader` per source in parallel with source, window, `out` =
+Dispatch one `source-reader` per source in parallel (foreground calls in one message) with source, window, `out` =
 `<run dir>/candidates-<slug>.json`, export path if any.
 
 ## 3. Deterministic pass

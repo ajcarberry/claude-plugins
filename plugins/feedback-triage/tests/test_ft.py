@@ -211,6 +211,15 @@ class Lifecycle(unittest.TestCase):
         p = self.e.run("investigated", "--json", json.dumps({"id": self.id}), ok=False)
         self.assertEqual(p.returncode, 2)
 
+    def test_infra_failures_do_not_block_a_ticket(self):
+        for _ in range(3):
+            self.e.j("claim")
+            self.assertEqual(self.e.j("release", self.id, "--reason", "disk full", "--infra")["status"], "new")
+        self.e.j("claim")
+        self.assertEqual(self.e.j("release", self.id, "--reason", "no repro")["status"], "new")
+        self.e.j("claim")
+        self.assertEqual(self.e.j("release", self.id, "--reason", "no repro")["status"], "blocked")
+
     def test_medium_needs_options(self):
         self.e.j("claim")
         res = {"id": self.id, "complexity": {"tier": "medium", "rationale": "r"}, "repro": "reproduced", "investigation_file": self.inv, "options_count": 1}

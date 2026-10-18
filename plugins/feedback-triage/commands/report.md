@@ -11,7 +11,7 @@ is Markdown to paste into the team's tracker, one ticket per report.
 
 1. `state.sh pull` (`${CLAUDE_PLUGIN_ROOT}/scripts/state.sh`). `ft due
    report-writing` (restricted to `$ARGUMENTS` ids if given) → `[{id, fix_ready}]`
-   needing prose. Dispatch one `report-writer` per ticket in parallel with: ticket
+   needing prose. Dispatch one `report-writer` per ticket in parallel (foreground calls in one message) with: ticket
    path, investigation path, `fix_ready`, `ft related <ID>` output, `out` =
    `<runs>/report-<UTC ts>/report-<ID>.json`.
 2. `ft report-set <ID> --json <out>`. Exit 2 → redispatch that writer with the lint
